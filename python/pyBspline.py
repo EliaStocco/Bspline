@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[4]:
+# In[17]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -81,7 +81,7 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[11]:
+# In[10]:
 
 
 import copy
@@ -354,7 +354,7 @@ class Bspline :
                     #print("alpha(",j,"):",alpha)
                     d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
 
-        return d[p]    
+        return d[p]
     ### https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/surface/bspline-de-boor.html
     def _iterative_deBoor(self,x) :
         
@@ -396,20 +396,35 @@ class Bspline :
     ###
     def evaluate(self,x):
         #sistemo dimensioni di x
+        #if self._codim() > 1 :
         X = self._correct_type_and_shape(x)
+        #else :
+        #    x = [X]
+            
         #print("X:",X)
         if len(X) == 1 :
-            #print("one x value passed")
             x = X[0]
+            #print("one x value passed : ",X," -> ",x)            
             # ho passato solo un valore
-            if self.dim() == 1 :
-                return self._deBoor(x)
+            if self.dim() == 1 :                
+                out = self._deBoor(x)
+                #print("dim == 1, out : ", out) 
+                #return self._deBoor(x)
             else :
                 curve_final = self._iterative_deBoor(x)
-                return curve_final._deBoor(x[0])
+                out = curve_final._deBoor(x[0])
+                #out = curve_final._deBoor(x[0])
+                #print("dim >= 1, out : ", out) 
+                #return curve_final._deBoor(x[0])
+            #if self.codim() > 1 :
+            #    out = out[0]
+            return out
         else :
             #print("x vector of lenght ",len(X)," passed")
-            return [ self.evaluate(j) for j in X ]
+            out = [ self.evaluate(j) for j in X]
+            #if self.codim() > 1 :
+            out = np.asarray(out)
+            return out
     ###
     def derivative(self,n=1):
         
@@ -432,7 +447,7 @@ class Bspline :
                 #print("kt[i+2]         :",kt [i+2])
                 #print("kt[i+1]         :",kt[i+1])
                 cp = p*(self.get_cp(i+1) - self.get_cp(i)) / ( kt[i+p+1] - kt[i+1] ) 
-                der.set_cp([i],[cp]) 
+                der.set_cp(i,[cp]) 
             
             #if j != n-1 :
             self = der.copy()
