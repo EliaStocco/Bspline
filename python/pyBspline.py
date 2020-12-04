@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[17]:
+# In[9]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -200,7 +200,19 @@ class Bspline :
         #if len(value) == len(self._cp[index]) :
         value = np.asarray(value)
         value.reshape((self.codim(),1))
-        self._cp[index] = value
+        if self.dim() != 1 :
+            #print("convert to tuple:",type(index))
+            ti = tuple(index)
+            #print("type(ti):",type(ti))
+            self._cp[ti] = value
+            #print(self._cp)
+        else :
+            self._cp[index] = value
+            #print("dim!=1")
+            #print("index=",index)
+            
+        #print("index=",index)
+        
         #else :
         #    if check == True :
         #        print("error : Bspline.set")
@@ -390,18 +402,19 @@ class Bspline :
             #print("a.shape",a.shape)
             #print("len(surface_cp[i])",len(surface_cp[i]))
             surface_cp[i]=curve.evaluate(x_surf)
-            
+        
+        #print("surface_cp : ",surface_cp)            
         out_sh = shape(dim=1,codim=self.codim())        
         return Bspline(out_sh,[sub_kv],surface_cp)    
     ###
     def evaluate(self,x):
         #sistemo dimensioni di x
-        #if self._codim() > 1 :
+        #if self._codim() > 1 :        
         X = self._correct_type_and_shape(x)
         #else :
         #    x = [X]
             
-        #print("X:",X)
+        #print("evaluate at :",X)
         if len(X) == 1 :
             x = X[0]
             #print("one x value passed : ",X," -> ",x)            
@@ -411,7 +424,10 @@ class Bspline :
                 #print("dim == 1, out : ", out) 
                 #return self._deBoor(x)
             else :
+                #print("dim : ",self.dim())    
                 curve_final = self._iterative_deBoor(x)
+                #print("curve_final : ")
+                #curve_final.show()
                 out = curve_final._deBoor(x[0])
                 #out = curve_final._deBoor(x[0])
                 #print("dim >= 1, out : ", out) 
