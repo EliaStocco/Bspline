@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[45]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -453,7 +453,7 @@ class Bspline :
                 out = out.reshape((len(out,)))
             return out
     ###
-    def derivative(self,n=1):
+    def derivative(self,n=1):        
         
         if self.dim() == 1 :        
             #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
@@ -499,19 +499,77 @@ class Bspline :
             return der    
         else :
             
-            #trasformo la Bspline in un array di Bspline scalari
-            #calcolo la derivata di ognuna di queste nuove Bspline
-            #poi le raggruppo in una lista
+            der_kv = list()
+            for k in range(0,self.dim()):
+
+                der_sh = self._sh                
+                kv     = self._kv[k]
+                kt     = kv.knots()
+                #p      = kv.p()
+                der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
+            #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
+            der = Bspline(der_sh,der_kv)
+            #der.clear_cp()
+
             out = list()
-            for i in range(0,self.dim()):
-                #per ogni dimensione ho una Bspline come quella originaria
-                #che valuta la derivata rispetto alla direzione i
-                curve_cp = self._cp[:,i]
-                curve_sh = shape(self.dim(),self.dim())
-                curve    = Bspline(curve_sh,self._kv,curve_cp)                
-                out.append(curve.derivative())
+            #derK = der.copy()
+            for K in range(0,self.dim()):
                 
+                #
+                KV     = self._kv[K]
+                KT     = KV.knots()
+                P      = KV.p()
+                
+                #print("KT :",KT)
+                
+                #
+                derK = der.copy()
+                N = list()
+                Ntot = 1
+                for k in range(0,self.dim()):
+                    if k != K :
+                    #prendo solo quelli lungo un asse
+                        kv     = der._kv[k]
+                        kt     = kv.knots()
+                        p      = kv.p()
+                        #devo ciclare su tutte le altre dimensioni
+
+                        N.append(np.arange(0,kv.n()))
+                        Ntot = Ntot * kv.n()
+                        #X.append(kt)
+
+                w = list(np.meshgrid(*N))
+
+                #print(Ntot)
+                index = np.zeros(shape=(Ntot,self.dim()-1),dtype=int)
+                #print(index)
+                for i in range(0,len(w)):
+                    a = w[i].reshape((Ntot,))
+                    index[:,i] = a
+                #print(index)
+                    
+                for i in index:
+                    left  = [ i[kk] for kk in range(0,len(i)) if kk < K  ] #i[0:K]
+                    right = [ i[kk] for kk in range(0,len(i)) if kk >= K  ] #i[K:]
+                    #print("K :",K,"->",left,"-",right)
+                    
+                    #kv     = self._kv[K]
+                    #kt     = kv.knots()
+                    #p      = kv.p()
+                    
+                    for k in range(0,KV.n()-1):
+                        ii  = list(left) + [k] + list(right)
+                        iip = list(left) + [k+1] + list(right)
+                        #print(k,"-",ii)
+                        #a = self._cp[[0,0,0]]
+                        #b = self._cp[tuple(ii)]
+                        cp = P*(self._cp[tuple(iip)] - self._cp[tuple(ii)]) / ( KT[k+P+1] - KT[k+1] ) 
+                        print("K :",K,"-> k:",k,"->",ii,"-> cp:",cp, "from ",self._cp[tuple(iip)],                              " and " ,self._cp[tuple(ii)] )
+                        derK.set_cp(ii,cp) 
+                out.append(derK)
+
             return out
+
     ###
     def jacobian(self,x):
         #sistemo dimensioni di x
@@ -560,23 +618,3 @@ class Bspline :
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
 
-
-# for j in range(0,p):
-#             a      = j+k-p+1
-#             b      = j+k-p
-#             left   = c[a] if a>=0 and a<len(c) else self.Type_out()
-#             right  = c[b] if b>=0 and b<len(c) else self.Type_out()
-#             factor = p/(t[j+k+1] - t[j+k-p+1])
-#             d[j]=factor*(left-right)
-#             
-#         alpha = 0.0
-#         for r in range(1,p+1) :
-#             for j in range(p-1,r-1,-1):
-#                 right = j+1+k-r
-#                 left = j+k-(p-1)
-#                 if right in range(0,len(t)) and left in range(0,len(t)) :                    
-#                     alpha = (x - t[left]) / (t[right] - t[left]);
-#                     d[j] = (1.0 - alpha) * d[j-1] + alpha * d[j]   
-#                 
-#         return d[p-1]
-#                          
