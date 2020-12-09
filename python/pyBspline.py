@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[6]:
+# In[ ]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -164,6 +164,9 @@ class Bspline :
 
         # assign control points dimension
         #print("init :" , init)
+        # assign control points dimension
+        #print("init :" , init)
+        #self.clear_cp()
         self._cp = np.zeros(shape=tuple(map(int,init)),dtype=object)
         self._cp.fill(self.Type_out())
         #print("self._cp : ",self._cp)
@@ -173,16 +176,19 @@ class Bspline :
         return copy.copy(self)    
     ### some function imitating C++ (template) type initialization
     def Type_out(self): #ok
+        #if self.codim() == 1 :
+        #    return 0.
+        #else :
+        #tenere così
         return np.zeros(self._sh.codim(),dtype=float)
     #def Type_in  (self) : #da rifare
     #    return np.zeros(shape=(self._sh.dim(),1))
     def Index_t  (self) : #ok
         return np.zeros(shape=(self._sh.dim(),1),dtype=int)    
-    def Type_out(self) : #ok
-        return np.zeros(self._sh.codim(),dtype=float)       
     ### get control point value/coordinates
     def get_cp (self,index,check=True) :        
         try :
+            # attenzione a passare degli int e non dei float
             return self._cp[index]
         except :
             if check == True :
@@ -432,14 +438,19 @@ class Bspline :
                 #out = curve_final._deBoor(x[0])
                 #print("dim >= 1, out : ", out) 
                 #return curve_final._deBoor(x[0])
-            #if self.codim() > 1 :
-            #    out = out[0]
+            if self.codim() == 1 :
+                out = float(out)
             return out
         else :
             #print("x vector of lenght ",len(X)," passed")
-            out = [ self.evaluate(j) for j in X]
+            #if self.codim() == 1 :
+            #    out = [float(self.evaluate(j)) for j in X ]
+            #else :
+            out = [ self.evaluate(j) for j in X ]
             #if self.codim() > 1 :
-            out = np.asarray(out).reshape((len(out,)))
+            out = np.asarray(out)
+            if self.codim() == 1 :
+                out = out.reshape((len(out,)))
             return out
     ###
     def derivative(self,n=1):
@@ -462,11 +473,17 @@ class Bspline :
                 der    = Bspline(der_sh,der_kv)
 
                 out = list()
+                N = list()
+                X = list()
                 for k in range(0,self.dim()):
                     #prendo solo quelli lungo un asse
                     kv     = self._kv[k]
                     kt     = kv.knots()
                     p      = kv.p()
+                    #devo ciclare su tutte le altre dimensioni
+                    N.append(kv.n())
+                    X.append(kt)
+                    
                     for i in range(0,kv.n()-1):
                         #print("i:",i)
                         #print("self.get_cp(i+1):",self.get_cp(i+1))
