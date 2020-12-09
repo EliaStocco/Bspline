@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[9]:
+# In[6]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[9]:
+# In[2]:
 
 
 class shape :
@@ -81,7 +81,7 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[10]:
+# In[3]:
 
 
 import copy
@@ -439,36 +439,62 @@ class Bspline :
             #print("x vector of lenght ",len(X)," passed")
             out = [ self.evaluate(j) for j in X]
             #if self.codim() > 1 :
-            out = np.asarray(out)
+            out = np.asarray(out).reshape((len(out,)))
             return out
     ###
     def derivative(self,n=1):
         
-        #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
-        # n = ordine della derivata
-        # calcolo la derivata n volte
-        for j in range(0,n):            
-        
-            der_sh = self._sh                
-            kv     = self._kv[0]
-            kt     = kv.knots()
-            p      = kv.p()
-            der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
-            der    = Bspline(der_sh,[der_kv])
+        if self.dim() == 1 :        
+            #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
+            # n = ordine della derivata
+            # calcolo la derivata n volte
+            for j in range(0,n):     
+                
+                der_kv = list()
+                for k in range(0,self.dim()):
+                
+                    der_sh = self._sh                
+                    kv     = self._kv[k]
+                    kt     = kv.knots()
+                    p      = kv.p()
+                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
+                #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
+                der    = Bspline(der_sh,der_kv)
 
-            for i in range(0,kv.n()-1):
-                #print("i:",i)
-                #print("self.get_cp(i+1):",self.get_cp(i+1))
-                #print("self.get_cp(i)  :",self.get_cp(i))
-                #print("kt[i+2]         :",kt [i+2])
-                #print("kt[i+1]         :",kt[i+1])
-                cp = p*(self.get_cp(i+1) - self.get_cp(i)) / ( kt[i+p+1] - kt[i+1] ) 
-                der.set_cp(i,[cp]) 
+                out = list()
+                for k in range(0,self.dim()):
+                    #prendo solo quelli lungo un asse
+                    kv     = self._kv[k]
+                    kt     = kv.knots()
+                    p      = kv.p()
+                    for i in range(0,kv.n()-1):
+                        #print("i:",i)
+                        #print("self.get_cp(i+1):",self.get_cp(i+1))
+                        #print("self.get_cp(i)  :",self.get_cp(i))
+                        #print("kt[i+2]         :",kt [i+2])
+                        #print("kt[i+1]         :",kt[i+1])
+                        cp = p*(self.get_cp(i+1) - self.get_cp(i)) / ( kt[i+p+1] - kt[i+1] ) 
+                        der.set_cp(i,[cp]) 
+
+                #if j != n-1 :
+                self = der.copy()
+
+            return der    
+        else :
             
-            #if j != n-1 :
-            self = der.copy()
-            
-        return der    
+            #trasformo la Bspline in un array di Bspline scalari
+            #calcolo la derivata di ognuna di queste nuove Bspline
+            #poi le raggruppo in una lista
+            out = list()
+            for i in range(0,self.dim()):
+                #per ogni dimensione ho una Bspline come quella originaria
+                #che valuta la derivata rispetto alla direzione i
+                curve_cp = self._cp[:,i]
+                curve_sh = shape(self.dim(),self.dim())
+                curve    = Bspline(curve_sh,self._kv,curve_cp)                
+                out.append(curve.derivative())
+                
+            return out
     ###
     def jacobian(self,x):
         #sistemo dimensioni di x
