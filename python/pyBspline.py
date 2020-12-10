@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[45]:
+# In[7]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -81,7 +81,7 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[3]:
+# In[4]:
 
 
 import copy
@@ -499,22 +499,27 @@ class Bspline :
             return der    
         else :
             
-            der_kv = list()
-            for k in range(0,self.dim()):
-
-                der_sh = self._sh                
-                kv     = self._kv[k]
-                kt     = kv.knots()
-                #p      = kv.p()
-                der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
-            #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
-            der = Bspline(der_sh,der_kv)
+            
             #der.clear_cp()
 
             out = list()
             #derK = der.copy()
             for K in range(0,self.dim()):
                 
+                der_kv = list()
+                der_sh = self._sh     
+                for k in range(0,self.dim()):
+                    
+                    kv     = self._kv[k]
+                    kt     = kv.knots()
+
+                    if k != K :
+                        der_kv.append(knot_vector(kv.p(),kv.n(),kt)) 
+                    else :     
+                        der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
+                #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
+                derK = Bspline(der_sh,der_kv)
+            
                 #
                 KV     = self._kv[K]
                 KT     = KV.knots()
@@ -523,13 +528,13 @@ class Bspline :
                 #print("KT :",KT)
                 
                 #
-                derK = der.copy()
+                #derK = der.copy()
                 N = list()
                 Ntot = 1
                 for k in range(0,self.dim()):
                     if k != K :
                     #prendo solo quelli lungo un asse
-                        kv     = der._kv[k]
+                        kv     = derK._kv[k]
                         kt     = kv.knots()
                         p      = kv.p()
                         #devo ciclare su tutte le altre dimensioni
@@ -560,11 +565,15 @@ class Bspline :
                     for k in range(0,KV.n()-1):
                         ii  = list(left) + [k] + list(right)
                         iip = list(left) + [k+1] + list(right)
+                        
+                        #ii  = ii.reverse()
+                        #iip = iip.reverse()
                         #print(k,"-",ii)
                         #a = self._cp[[0,0,0]]
                         #b = self._cp[tuple(ii)]
                         cp = P*(self._cp[tuple(iip)] - self._cp[tuple(ii)]) / ( KT[k+P+1] - KT[k+1] ) 
-                        print("K :",K,"-> k:",k,"->",ii,"-> cp:",cp, "from ",self._cp[tuple(iip)],                              " and " ,self._cp[tuple(ii)] )
+                        #print("K :",K,"-> k:",k,"->",ii,"-> cp:",cp, "from ",self._cp[tuple(iip)],\
+                        #      " and " ,self._cp[tuple(ii)] )
                         derK.set_cp(ii,cp) 
                 out.append(derK)
 
@@ -617,4 +626,10 @@ class Bspline :
         X = np.asarray(x)
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
+
+
+# In[ ]:
+
+
+
 
