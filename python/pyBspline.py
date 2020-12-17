@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[7]:
+# In[9]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[10]:
+# In[3]:
 
 
 import numpy as np
@@ -85,6 +85,7 @@ class knot_vector ():
 
 
 import copy
+import pandas as pd
 
 class Bspline :
     
@@ -626,6 +627,73 @@ class Bspline :
         X = np.asarray(x)
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
+    
+    ###
+    def index_list(self):
+        N = list()
+        Ntot = 1
+        for k in range(0,self.dim()):
+            kv     = self._kv[k]
+            #kt     = kv.knots()
+            #p      = kv.p()
+            #devo ciclare su tutte le altre dimensioni
+
+            N.append(np.arange(0,kv.n()))
+            Ntot = Ntot * kv.n()
+            #X.append(kt)
+
+        w = list(np.meshgrid(*N))
+
+        #print(Ntot)
+        index = np.zeros(shape=(Ntot,self.dim()),dtype=int)
+        #print(index)
+        for i in range(0,len(w)):
+            a = w[i].reshape((Ntot,))
+            index[:,i] = a
+        #print(index)
+        return index
+    
+    ###
+    def basis_range(self):
+            
+        basis_range = list()#np.zeros(self.dim(),dtype=object)
+        for k in range(0,self.dim()):
+            kv = self._kv[k]
+            kt = kv.knots()
+            n  = kv.n()
+            p  = kv.p() 
+            data = {"index":range(0,n),                   "i-min":range(0,n),                   "i-max":np.arange(0,n)+p+1,                   "x-min":kt[0:n],                   "x-max":kt[p+1:p+1+n]}
+            br = pd.DataFrame(data)#np.array(shape=(n,3))
+            basis_range.append(br)
+
+        #creo gli indici
+        index_index = [ ("index", i) for i in range(0,self.dim()) ]
+        index_min   = [ ("min"  , i) for i in range(0,self.dim()) ]
+        index_max   = [ ("max"  , i) for i in range(0,self.dim()) ]
+        index = index_index + index_min + index_max
+
+        #
+        mi = pd.MultiIndex.from_tuples(index)
+        df = pd.DataFrame(columns=index)
+        df = df.reindex(columns=mi)
+
+        #
+        il = self.index_list()   
+
+        #
+        for k in range(0,self.dim()):
+            df[("index",k)] = il[:,k]           
+            appo =  basis_range[k]
+            #print(appo)
+            for j in range(0,len(br)):
+                #print(j)
+                df.loc[ df[("index",k)] == appo.loc[j,"index"] , ("min",k) ] = appo.loc[j,"x-min"]
+                df.loc[ df[("index",k)] == appo.loc[j,"index"] , ("max",k) ] = appo.loc[j,"x-max"]
+            
+        #if self.dim() == 1 :
+        #    return df #basis_range[0],
+        #else :
+        return df #basis_range,df
 
 
 # In[ ]:
