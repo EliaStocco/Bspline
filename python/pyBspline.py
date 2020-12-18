@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[9]:
+# In[13]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -81,7 +81,7 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[4]:
+# In[6]:
 
 
 import copy
@@ -678,14 +678,15 @@ class Bspline :
         df = df.reindex(columns=mi)
 
         #
-        il = self.index_list()   
+        il = self.index_list() 
+        it = [ tuple(j) for j in il ]
 
         #
         for k in range(0,self.dim()):
             df[("index",k)] = il[:,k]           
             appo =  basis_range[k]
             #print(appo)
-            for j in range(0,len(br)):
+            for j in range(0,len(appo)):
                 #print(j)
                 df.loc[ df[("index",k)] == appo.loc[j,"index"] , ("min",k) ] = appo.loc[j,"x-min"]
                 df.loc[ df[("index",k)] == appo.loc[j,"index"] , ("max",k) ] = appo.loc[j,"x-max"]
@@ -693,7 +694,85 @@ class Bspline :
         #if self.dim() == 1 :
         #    return df #basis_range[0],
         #else :
+        
+        df["ii"] = it
+        df.set_index("ii",inplace=True)
+        
         return df #basis_range,df
+    
+    ###
+    def adjacency_matrix(self):
+        
+        #
+        i = self.index_list()#df["index"]
+        it = [ tuple(j) for j in i ]
+        am = pd.DataFrame(index=it,columns=it)
+
+        #
+        br = self.basis_range()
+        #br["ii"] = it
+        #br.set_index("ii",inplace=True)
+        #am
+
+        n = am.shape[1]
+        for i in range(0,n):
+            r = am.index[i]
+            c = am.columns[i]
+
+            a = list()
+            for k in range(0,self.dim()):
+                a.append( [ br.at[r,("min",k)] ,br.at[r,("max",k)] ] )    
+
+            am.at[r,c] = True
+            for j in range(i+1,n):   
+                #print(i,"-",j)
+                c = am.columns[j]
+                intersection = True
+                for k in range(0,self.dim()):
+                    b = [ br.at[c,("min",k)] ,br.at[c,("max",k)] ]  
+                    o = overlaps( a[k] ,b )
+                    if o is None :
+                        intersection = False
+                        break
+                am.at[r,c] = intersection
+                am.at[c,r] = intersection
+                
+        return am
+    
+    ###
+    def basis_max_min(self,r,br=None):
+        
+        if br is None :
+            br = self.basis_range()
+        
+        a = list()
+        for k in range(0,self.dim()):
+            a.append( [ br.at[r,("min",k)] , br.at[r,("max",k)] ] )    
+            
+        return a
+    
+    ###
+    def basis_overlap(self,r,c,br=None):
+        
+        if br is None :
+            br = self.basis_range()
+        
+        rmm = self.basis_max_min(r,br)
+        cmm = self.basis_max_min(c,br)
+        o = list()
+        for k in range(0,self.dim()):
+            o.append( overlaps( rmm[k] ,cmm[k] ) )
+            
+        return o
+
+###        
+def overlaps(a, b):
+    c = [ max(a[0],b[0]) , min(a[1],b[1]) ]
+    
+    if c[0] >= c[1] :
+        return None
+    else :
+        return c
 
 
 # In[ ]:
