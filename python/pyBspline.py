@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[13]:
+# In[17]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -86,6 +86,8 @@ class knot_vector ():
 
 import copy
 import pandas as pd
+from scipy import integrate
+import itertools 
 
 class Bspline :
     
@@ -764,6 +766,121 @@ class Bspline :
             o.append( overlaps( rmm[k] ,cmm[k] ) )
             
         return o
+    
+    ###
+    def stifness_matrix(self,opts={}):
+        
+        #mi serve solo per avere una classe costrutira correttamente
+        der = self.derivative()
+        
+        br = self.basis_range()
+
+        smd = list()#stifness matrix for derivatives
+
+        for k in range(0,self.dim()):
+
+            print("dimension :",k)
+            d = der[k]
+            d.clear_cp()
+
+            #adjacency matrix delle derivate
+            am = d.adjacency_matrix()
+
+            smd1D = am.copy()    
+            smd1D[ smd1D == False ] = None
+
+            #definisco la funzione da integrare
+            def integral(*xx):
+                #print(type(xx))
+                return left.evaluate(xx)*right.evaluate(xx)
+
+            #integral = lambda *xx : np.dot(left.evaluate(tuple(xx)),right(tuple(xx)))
+
+            #calcolo il prodotto scalare dei gradiente
+            n = am.shape[0]
+            for i in range(0,n):
+                r = am.index[i] 
+
+                #creo la funzione di base
+                left = d.copy()
+                left.set_cp(r,1.0)
+
+                for j in range(i,n):
+
+                    c = am.columns[j]
+
+                    if am.at[r,c] is True:
+
+                        #print(i,"-",j)
+
+                        #creo la funzione di base
+                        right = d.copy()
+                        right.set_cp(c,1.0)
+                        ov = self.basis_overlap(r,c,br)
+                        #if ov is not None :
+                        smd1D.at[r,c] = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
+                        smd1D.at[c,r] = smd1D.at[r,c] #matrice simmetrica
+
+            smd.append(smd1D)
+            
+        ###
+        #calcolo la stifness matrix vera e propria
+        am = self.adjacency_matrix()
+        sm1D = am.copy()    
+        sm1D[ sm1D == False ] = None
+
+        sm = list()
+
+        n = sm1D.shape[0]#quadrata
+
+        #creo una copia della Bspline
+        left  = self.copy()
+        right = self.copy()
+
+        for k in range(0,self.dim()):
+
+            for i in range(0,n):
+
+                r = am.index[i] 
+                left.clear_cp()
+                left.set_cp(r,1.0)
+                dl = left.derivative()[k]
+
+
+                cpl = dl._cp.astype(float) #left control points
+                nzcpl = np.argwhere( cpl != 0.).tolist() #non zero control points (left) indices
+
+
+                for j in range(i,n):
+
+                    c = am.columns[j]        
+                    right.clear_cp()
+                    right.set_cp(c,1.0)
+                    dr = right.derivative()[k]
+
+                    cpr = dr._cp.astype(float) #left control points
+                    nzcpr = np.argwhere( cpl != 0.).tolist() #non zero control points (right) indices
+
+                    allpairs = list(itertools.product(nzcpl,nzcpr)) #attenzione all'ordine
+
+                    sm1D.at[r,c] = 0.0            
+                    for w in range(0,len(allpairs)):
+                        li = tuple(allpairs[w][0])
+                        ri = tuple(allpairs[w][1])
+                        ll = cpl[li]
+                        rr = cpr[ri]
+                        #if ll != 0.0 and rr != 0.0 :                    
+                        dd = smd[k].at[li,ri]
+                        if dd is None : dd = 0.0
+                        sm1D.at[r,c] = sm1D.at[r,c] + ll*rr*dd
+
+                    sm1D.at[c,r] = sm1D.at[r,c]
+
+            sm.append(sm1D)
+            
+        return sm
+
+
 
 ###        
 def overlaps(a, b):
