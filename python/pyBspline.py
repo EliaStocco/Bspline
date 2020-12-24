@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[35]:
+# In[51]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -835,7 +835,7 @@ class Bspline :
                 if opts["norm"] == "L1" :
                     res = np.mean(y)
                 elif opts["norm"] == "L2" :
-                    res = np.sqrt(np.sum(np.power(y,2.0)))/len(y)
+                    res = np.sqrt(np.mean(y))
                                 
                 #res = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
                 if opts["print"] == True : endt = time.time()
@@ -864,9 +864,27 @@ class Bspline :
             opts["delta"] = np.full((self.dim(),),4)
         if "norm" not in opts :
             opts["norm"] = "L1"
+        if "del-edge" not in opts :
+            opts["del-edge"] = True
         if opts2 is not None :
             opts.update(opts2)
         return opts
+    
+    ###
+    def edge(self):
+        il = self.index_list()
+        df = pd.DataFrame( il , index = tuple(il) ,columns = np.arange(0,self.dim()) )
+        df["edge"] = True
+        allx = np.arange(0,self.dim())
+        e = np.zeros(self.dim())
+        for i in range(0,df.shape[0]):
+            for k in allx :                
+                kv = self._kv[k]
+                e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
+            df.at[df.index[i],"edge"] = np.any(e)
+        df.drop(columns=allx,inplace=True)
+        return df
+
     
     ###
     def stiffness_matrix(self,opts=None):
@@ -890,7 +908,13 @@ class Bspline :
         am = self.adjacency_matrix()
         #matrice di stiffness di una sola dimensione
         sm1D = pd.DataFrame(0.0,index=am.index,columns=am.columns)
-
+        n = sm1D.shape[0]#quadrata
+        
+        # escludo subito dal calcolo i termini di bordo 
+        #impostando a nan il valore in sm1D
+        edge = self.edge()
+                
+        
         #sm1D = am.copy()    
         #sm1D[ sm1D == False ] = 0.0 #None
 
@@ -899,7 +923,7 @@ class Bspline :
         #questa è in realtà una lista contenente le matrici parziali
         sm = list()
 
-        n = sm1D.shape[0]#quadrata
+        
 
         #creo una copia della Bspline
         left  = self.copy()
@@ -917,6 +941,13 @@ class Bspline :
 
                 #indice della funzione di base di sinista (r=righe)
                 r = am.index[i] 
+                
+                #controllo che il termine non sia di bordo
+                if edge.at[r,"edge"] == True :
+                    sm1D.at[r,:] = np.nan
+                    sm1D.at[:,r] = np.nan
+                    continue
+                    
                 #left.clear_cp()
                 left.set_cp(r,1.0)
                 #calcolo la derivata della funzione di base di sinistra
@@ -938,7 +969,15 @@ class Bspline :
                     #if opts["print"] == True : print(i,"-",j,end="\r")
 
                     #indice della funzione di base di destra (c=colonne)
-                    c = am.columns[j]        
+                    c = am.columns[j]   
+                    
+                    #controllo che il termine non sia di bordo
+                    if edge.at[c,"edge"] == True :
+                        sm1D.at[c,:] = np.nan
+                        sm1D.at[:,c] = np.nan
+                        continue
+                    
+                    
                     #right.clear_cp()
                     right.set_cp(c,1.0)
                     dr = right.derivative()[k] if self.dim() > 1 else right.derivative()
@@ -974,7 +1013,11 @@ class Bspline :
                     if opts["print"] == True : print("\n")
 
             sm.append(sm1D)
-        return sum(sm)
+            out = sum(sm)
+            out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=0)
+            out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=1)
+
+        return out
     
     ###
     def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
@@ -992,11 +1035,11 @@ class Bspline :
         sm.replace(np.nan,0.0,inplace=True)
         lv.replace(np.nan,0.0,inplace=True)
 
-        smnp = np.asarray(om)
+        smnp = np.asarray(sm)
         lvnp = np.asarray(lv)
 
         cp  = np.linalg.solve(smnp,lvnp)
-        out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+        out = pd.DataFrame(cp,index=sm.index,columns=["cp"])
 
         for i in range(len(cp)):
             j = out.index[i]
@@ -1006,7 +1049,7 @@ class Bspline :
     ###
     def approximate(self,func,opts=None):
         #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
-        opts = self.prepare_opts(opts,opts2={"norm":"L2"})
+        opts = self.prepare_opts(opts,opts2={"norm":"L1","del-edge":False})
 
         om = self.overlap_matrix(opts)
         lv = self.load_vector(func,opts)
@@ -1029,6 +1072,11 @@ class Bspline :
     def load_vector(self,func,opts=None): 
         
         opts = self.prepare_opts(opts)
+        
+        # escludo subito dal calcolo i termini di bordo 
+        #impostando a nan il valore in sm1D
+        if opts["del-edge"] == True :
+            edge = self.edge()
 
         #
         X = np.zeros(self.dim())
@@ -1053,6 +1101,12 @@ class Bspline :
         
             
         for i in il :
+            
+            #controllo che il termine non sia di bordo
+            if opts["del-edge"] == True and edge.at[i,"edge"] == True :
+                out.at[i,"cp"] = np.nan
+                continue
+                        
             #i = tuple(i)
             scalar.set_cp(i,1.0)
             ov = self.basis_overlap(i,i,br) #overlap
@@ -1076,7 +1130,10 @@ class Bspline :
 
             #cancello
             scalar.set_cp(i,0.0)
-        return out        
+        if opts["del-edge"] == True:
+            out = out.drop(edge.index[ edge["edge"] == True ])  
+            
+        return out       
     
 ###        
 def overlaps(a, b):
