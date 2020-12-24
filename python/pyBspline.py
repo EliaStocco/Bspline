@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[25]:
+# In[35]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[26]:
+# In[31]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[27]:
+# In[32]:
 
 
 import numpy as np
@@ -81,7 +81,7 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[28]:
+# In[33]:
 
 
 import copy
@@ -839,7 +839,7 @@ class Bspline :
                                 
                 #res = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
                 if opts["print"] == True : endt = time.time()
-                if opts["print"] == True : print(i,"-",j," -> ", endt - start," s")
+                if opts["print"] == True : print(r,"-",c," -> ", endt - start," s")
 
                 #    
                 smd1D.at[r,c] = res
@@ -872,22 +872,31 @@ class Bspline :
     def stiffness_matrix(self,opts=None):
         
         opts = self.prepare_opts(opts)
-        
-        #stifness matrix for derivatives
-        smd = list()
+
+        #matrice di overlap delle derivate
+        omd = list()
         der = self.derivative() if self.dim() > 1 else [self.derivative()]
         if opts["print"] == True : print("preparation",end="\r")
         for k in range(0,self.dim()):
             if opts["print"] == True : print("\ndimension :",k)  
-            smd1D = der[k].overlap_matrix(opts)
-            smd.append(smd1D)
-                
+            omd1D = der[k].overlap_matrix(opts)
+            omd.append(omd1D)
+        del omd1D
+        #smd : overlap matrix derivatives
+        #smd : matrice di overlap delle derivate
+
         ###
         #calcolo la stifness matrix vera e propria
         am = self.adjacency_matrix()
-        sm1D = am.copy()    
-        sm1D[ sm1D == False ] = 0.0 #None
+        #matrice di stiffness di una sola dimensione
+        sm1D = pd.DataFrame(0.0,index=am.index,columns=am.columns)
 
+        #sm1D = am.copy()    
+        #sm1D[ sm1D == False ] = 0.0 #None
+
+        #stiffness matrix: sum over all dimensione
+        #matrice stiffness finale, è la somma della matrici parziali (su una sola dimensione)
+        #questa è in realtà una lista contenente le matrici parziali
         sm = list()
 
         n = sm1D.shape[0]#quadrata
@@ -903,48 +912,66 @@ class Bspline :
         for k in range(0,self.dim()):
             if opts["print"] == True : print("\ndimension :",k)
 
+            #ciclo su tutte le funzioni di base
             for i in range(0,n):
 
+                #indice della funzione di base di sinista (r=righe)
                 r = am.index[i] 
                 #left.clear_cp()
                 left.set_cp(r,1.0)
+                #calcolo la derivata della funzione di base di sinistra
                 dl = left.derivative()[k] if self.dim() > 1 else left.derivative()
 
-                #cancello
+                #cancello, tanto non mi serve valutarla
+                #mi servono soltanto i coefficienti della derivata
                 left.set_cp(r,0.0)
 
 
-                cpl = dl._cp.astype(float) #left control points
-                nzcpl = np.argwhere( cpl != 0.).tolist() #non zero control points (left) indices
+                #control points, modifico il tipo e cerco quelli non nulli
+                cpl = dl._cp.astype(float) 
+                #non zero control points (left) indices
+                nzcpl = np.argwhere( cpl != 0.).tolist() 
 
 
+                #ciclo su tutte le altre funzioni di base
                 for j in range(i,n):
-                    if opts["print"] == True : print(i,"-",j,end="\r")
+                    #if opts["print"] == True : print(i,"-",j,end="\r")
 
+                    #indice della funzione di base di destra (c=colonne)
                     c = am.columns[j]        
                     #right.clear_cp()
                     right.set_cp(c,1.0)
                     dr = right.derivative()[k] if self.dim() > 1 else right.derivative()
-                    #cancello
+                    #cancello, tanto non mi serve valutarla
+                    #mi servono soltanto i coefficienti della derivata
                     right.set_cp(c,0.0)
 
-                    cpr = dr._cp.astype(float) #left control points
-                    nzcpr = np.argwhere( cpl != 0.).tolist() #non zero control points (right) indices
+                    #control points, modifico il tipo e cerco quelli non nulli
+                    cpr = dr._cp.astype(float)
+                    #non zero control points (right) indices
+                    nzcpr = np.argwhere( cpr != 0.).tolist() 
 
-                    allpairs = list(itertools.product(nzcpl,nzcpr)) #attenzione all'ordine
+                    #attenzione all'ordine
+                    #genero tutte le coppie
+                    allpairs = list(itertools.product(nzcpl,nzcpr))
+                    if opts["print"] == True : print(r,"-",c)
+                    if opts["print"] == True : print(cpl,"->",nzcpl)
+                    if opts["print"] == True : print(cpr,"->",nzcpr)
 
-                    sm1D.at[r,c] = 0.0            
+                    sm1D.at[r,c] = 0.0         
                     for w in range(0,len(allpairs)):
                         li = tuple(allpairs[w][0])
                         ri = tuple(allpairs[w][1])
                         ll = cpl[li]
-                        rr = cpr[ri]
+                        rr = cpr[ri]                
                         #if ll != 0.0 and rr != 0.0 :                    
-                        dd = smd[k].at[li,ri]
-                        if dd is None : dd = 0.0
+                        dd = omd[k].at[li,ri]
+                        if opts["print"] == True : print("sum : ",ll," | ",rr,"|",dd)
+                        #if dd is None : dd = 0.0
                         sm1D.at[r,c] = sm1D.at[r,c] + ll*rr*dd
 
                     sm1D.at[c,r] = sm1D.at[r,c]
+                    if opts["print"] == True : print("\n")
 
             sm.append(sm1D)
         return sum(sm)
@@ -959,16 +986,16 @@ class Bspline :
     def Galerkin(self,func,opts=None):
         opts = self.prepare_opts(opts)
 
-        om = self.stiffness_matrix(opts)
+        sm = self.stiffness_matrix(opts)
         lv = self.load_vector(func,opts)
 
-        om.replace(np.nan,0.0,inplace=True)
+        sm.replace(np.nan,0.0,inplace=True)
         lv.replace(np.nan,0.0,inplace=True)
 
-        omnp = np.asarray(om)
+        smnp = np.asarray(om)
         lvnp = np.asarray(lv)
 
-        cp  = np.linalg.solve(omnp,lvnp)
+        cp  = np.linalg.solve(smnp,lvnp)
         out = pd.DataFrame(cp,index=om.index,columns=["cp"])
 
         for i in range(len(cp)):
@@ -1044,7 +1071,7 @@ class Bspline :
                 res = np.sqrt(np.sum(np.power(y,2.0)))/len(y)
             out.at[i,"cp"] = res
             if opts["print"] == True : endt = time.time()
-            if opts["print"] == True : print(i,"-",j," -> ", endt - start," s")                
+            if opts["print"] == True : print(i," -> ", endt - start," s")                
             #out[i] = integrate.nquad( func , ov , opts = opts)[0] 
 
             #cancello
