@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[17]:
+# In[25]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[2]:
+# In[26]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[3]:
+# In[27]:
 
 
 import numpy as np
@@ -81,13 +81,14 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[6]:
+# In[28]:
 
 
 import copy
 import pandas as pd
 from scipy import integrate
 import itertools 
+import time
 
 class Bspline :
     
@@ -307,27 +308,13 @@ class Bspline :
         
         #valuto la funzione
         #if der == False :
-        return self._deBoor_wikipedia(k,x,t,c,p)
+        return self._deBoor_private(k,x,t,c,p)
         #valuto la derivata prima della funzione
         #if der == True :
-        #    return self._deBoor_wikipedia_derivative(k,x,t,c,p)        
-    ### 
-    def _deBoor_wikipedia_derivative(self,k: int, x, t, c, p: int) :
-        
-        #https://stackoverflow.com/questions/57507696/b-spline-derivative-using-de-boors-algorithm        
-        q = [ p * (c[j+k-p+1] - c[j+k-p]) / (t[j+k+1] - t[j+k-p+1])              if 0 <= j+k-p+1 < min(len(c),len(t)) and 0<= j+k-p < len(c) and 0 <= j+k+1 < len(t)             else self.Type_out()             for j in range(0, p)]
-
-        for r in range(1, p):
-            for j in range(p-1, r-1, -1):
-                right = j+1+k-r
-                left = j+k-(p-1)
-                if 0<= left < len(t) and 0<= right < len(t) :
-                    alpha = (x - t[left]) / (t[right] - t[left])
-                    q[j] = (1.0 - alpha) * q[j-1] + alpha * q[j]
-
-        return q[p-1]          
+        #    return self._deBoor_private_derivative(k,x,t,c,p)        
+    
     ### https://en.wikipedia.org/wiki/De_Boor%27s_algorithm
-    def _deBoor_wikipedia(self,k: int, x, t, c, p: int) :
+    def _deBoor_private(self,k: int, x, t, c, p: int) :
         #Evaluates S(x).
         #
         #Arguments
@@ -630,6 +617,7 @@ class Bspline :
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
     
+    #Galerkin method
     ###
     def index_list(self):
         N = list()
@@ -768,66 +756,137 @@ class Bspline :
         return o
     
     ###
-    def stifness_matrix(self,opts={}):
+    def overlap_matrix(self,opts=None):
         
+        opts = self.prepare_opts(opts)
+        
+        #definisco la funzione da integrare
+        #definisco la norma di Lebesgue
+        
+        #if opts["norm"] == "L1" :
+        integrate = lambda *xx : left.evaluate(xx)*right.evaluate(xx)
+        #elif opts["norm"] == "L2" :
+        #    integrate = lambda *xx : np.power(left.evaluate(xx)*right.evaluate(xx),2.0)
+
         #mi serve solo per avere una classe costrutira correttamente
-        der = self.derivative()
-        
+        #der = self.derivative()        
         br = self.basis_range()
 
         smd = list()#stifness matrix for derivatives
 
+        X = np.zeros(self.dim())
+        conta = 1
         for k in range(0,self.dim()):
+            conta = conta * opts["delta"][k]
+        Xintegration = np.zeros(shape=(conta,self.dim()))
+ 
 
-            print("dimension :",k)
-            d = der[k]
-            d.clear_cp()
 
-            #adjacency matrix delle derivate
-            am = d.adjacency_matrix()
+        if opts["print"] == True : print("preparation",end="\r")
+        #for k in range(0,self.dim()):
 
-            smd1D = am.copy()    
-            smd1D[ smd1D == False ] = None
+        #if opts["print"] == True : print("\ndimension :",k)
+        #d = der[k]
+        #d.clear_cp()
+        left = self.copy()
+        right = self.copy()
+        left.clear_cp()
+        right.clear_cp()
 
-            #definisco la funzione da integrare
-            def integral(*xx):
-                #print(type(xx))
-                return left.evaluate(xx)*right.evaluate(xx)
+        #adjacency matrix delle derivate
+        am = self.adjacency_matrix()
 
-            #integral = lambda *xx : np.dot(left.evaluate(tuple(xx)),right(tuple(xx)))
+        smd1D = am.copy()    
+        smd1D[ smd1D == False ] = 0.0 #np.nan
 
-            #calcolo il prodotto scalare dei gradiente
-            n = am.shape[0]
-            for i in range(0,n):
-                r = am.index[i] 
+        #calcolo il prodotto scalare dei gradiente
+        n = am.shape[0]
+        for i in range(0,n):
+            r = am.index[i] 
+
+            #creo la funzione di base
+            #left.clear_cp()
+            left.set_cp(r,1.0)
+
+            for j in range(i,n):
+
+                c = am.columns[j]
+
+                if am.at[r,c] is False :
+                    continue
+
+                #print(i,"-",j)
 
                 #creo la funzione di base
-                left = d.copy()
-                left.set_cp(r,1.0)
+                #right.clear_cp()
+                right.set_cp(c,1.0)
+                ov = self.basis_overlap(r,c,br)
 
-                for j in range(i,n):
+                #
+                X = [ np.delete(np.linspace(ov[k][0],ov[k][1],                                            opts["delta"][k]+1,endpoint=False),0)                      for k in range(0,self.dim()) ]
+                m = np.meshgrid(*X)
+                for k in range(0,self.dim()):
+                    Xintegration[:,k] = m[k].flatten()
 
-                    c = am.columns[j]
+                #
+                if opts["print"] == True : start = time.time()
+                    
+                y = integrate (Xintegration)
+                if opts["norm"] == "L1" :
+                    res = np.mean(y)
+                elif opts["norm"] == "L2" :
+                    res = np.sqrt(np.sum(np.power(y,2.0)))/len(y)
+                                
+                #res = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
+                if opts["print"] == True : endt = time.time()
+                if opts["print"] == True : print(i,"-",j," -> ", endt - start," s")
 
-                    if am.at[r,c] is True:
+                #    
+                smd1D.at[r,c] = res
+                smd1D.at[c,r] = res #matrice simmetrica
 
-                        #print(i,"-",j)
+                #cancello
+                right.set_cp(c,0.0)
 
-                        #creo la funzione di base
-                        right = d.copy()
-                        right.set_cp(c,1.0)
-                        ov = self.basis_overlap(r,c,br)
-                        #if ov is not None :
-                        smd1D.at[r,c] = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
-                        smd1D.at[c,r] = smd1D.at[r,c] #matrice simmetrica
+                #cancello
+            left.set_cp(r,0.0)
 
+        return smd1D
+            #smd.append(smd1D)
+        
+    ###
+    def prepare_opts(self,opts,opts2=None):
+        if opts is None:
+            opts = {}
+        if "print" not in opts :
+            opts["print"] = False
+        if "delta" not in opts :
+            opts["delta"] = np.full((self.dim(),),4)
+        if "norm" not in opts :
+            opts["norm"] = "L1"
+        if opts2 is not None :
+            opts.update(opts2)
+        return opts
+    
+    ###
+    def stiffness_matrix(self,opts=None):
+        
+        opts = self.prepare_opts(opts)
+        
+        #stifness matrix for derivatives
+        smd = list()
+        der = self.derivative() if self.dim() > 1 else [self.derivative()]
+        if opts["print"] == True : print("preparation",end="\r")
+        for k in range(0,self.dim()):
+            if opts["print"] == True : print("\ndimension :",k)  
+            smd1D = der[k].overlap_matrix(opts)
             smd.append(smd1D)
-            
+                
         ###
         #calcolo la stifness matrix vera e propria
         am = self.adjacency_matrix()
         sm1D = am.copy()    
-        sm1D[ sm1D == False ] = None
+        sm1D[ sm1D == False ] = 0.0 #None
 
         sm = list()
 
@@ -835,16 +894,24 @@ class Bspline :
 
         #creo una copia della Bspline
         left  = self.copy()
+        left.clear_cp()
         right = self.copy()
+        right.clear_cp()
 
+
+        if opts["print"] == True : print("\nstifness matrix",end="\r")
         for k in range(0,self.dim()):
+            if opts["print"] == True : print("\ndimension :",k)
 
             for i in range(0,n):
 
                 r = am.index[i] 
-                left.clear_cp()
+                #left.clear_cp()
                 left.set_cp(r,1.0)
-                dl = left.derivative()[k]
+                dl = left.derivative()[k] if self.dim() > 1 else left.derivative()
+
+                #cancello
+                left.set_cp(r,0.0)
 
 
                 cpl = dl._cp.astype(float) #left control points
@@ -852,11 +919,14 @@ class Bspline :
 
 
                 for j in range(i,n):
+                    if opts["print"] == True : print(i,"-",j,end="\r")
 
                     c = am.columns[j]        
-                    right.clear_cp()
+                    #right.clear_cp()
                     right.set_cp(c,1.0)
-                    dr = right.derivative()[k]
+                    dr = right.derivative()[k] if self.dim() > 1 else right.derivative()
+                    #cancello
+                    right.set_cp(c,0.0)
 
                     cpr = dr._cp.astype(float) #left control points
                     nzcpr = np.argwhere( cpl != 0.).tolist() #non zero control points (right) indices
@@ -877,11 +947,110 @@ class Bspline :
                     sm1D.at[c,r] = sm1D.at[r,c]
 
             sm.append(sm1D)
+        return sum(sm)
+    
+    ###
+    def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
+        sh = shape(dim=self.dim(),codim=1)
+        kv = self._kv        
+        return Bspline(sh,kv)#cp: default value
+    
+    ###
+    def Galerkin(self,func,opts=None):
+        opts = self.prepare_opts(opts)
+
+        om = self.stiffness_matrix(opts)
+        lv = self.load_vector(func,opts)
+
+        om.replace(np.nan,0.0,inplace=True)
+        lv.replace(np.nan,0.0,inplace=True)
+
+        omnp = np.asarray(om)
+        lvnp = np.asarray(lv)
+
+        cp  = np.linalg.solve(omnp,lvnp)
+        out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+
+        for i in range(len(cp)):
+            j = out.index[i]
+            self._cp[j]  = out.at[j,"cp"]
+        return out      
+    
+    ###
+    def approximate(self,func,opts=None):
+        #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
+        opts = self.prepare_opts(opts,opts2={"norm":"L2"})
+
+        om = self.overlap_matrix(opts)
+        lv = self.load_vector(func,opts)
+
+        om.replace(np.nan,0.0,inplace=True)
+        lv.replace(np.nan,0.0,inplace=True)
+
+        omnp = np.asarray(om)
+        lvnp = np.asarray(lv)
+
+        cp  = np.linalg.solve(omnp,lvnp)
+        out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+
+        for i in range(len(cp)):
+            j = out.index[i]
+            self._cp[j]  = out.at[j,"cp"]
+        return out       
+    
+    ###
+    def load_vector(self,func,opts=None): 
+        
+        opts = self.prepare_opts(opts)
+
+        #
+        X = np.zeros(self.dim())
+        conta = 1
+        for k in range(0,self.dim()):
+            conta = conta * opts["delta"][k]
+        Xintegration = np.zeros(shape=(conta,self.dim()))
+
+        #
+        br = self.basis_range()
+        il = self.index_list()
+        #if self.dim() > 1 :
+        il = [ tuple(i) for i in il ]
+        #else :
+        #    il = [ int(i) for i in il ]
+        scalar = self._scalar()
+        out = pd.DataFrame({"index" : il , "cp" : self._cp.copy().flatten().astype(float) })
+        out.set_index("index",inplace=True)
+
+        #definisco la norma di Lebesgue
+        integrate = lambda *xx : scalar.evaluate(xx)*func(xx)
+        
             
-        return sm
+        for i in il :
+            #i = tuple(i)
+            scalar.set_cp(i,1.0)
+            ov = self.basis_overlap(i,i,br) #overlap
 
+            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
+            m = np.meshgrid(*X)
+            for k in range(0,self.dim()):
+                Xintegration[:,k] = m[k].flatten()
 
+            #
+            if opts["print"] == True : start = time.time()
+            y = integrate (Xintegration)
+            if opts["norm"] == "L1" :
+                res = np.mean(y)
+            elif opts["norm"] == "L2" :
+                res = np.sqrt(np.sum(np.power(y,2.0)))/len(y)
+            out.at[i,"cp"] = res
+            if opts["print"] == True : endt = time.time()
+            if opts["print"] == True : print(i,"-",j," -> ", endt - start," s")                
+            #out[i] = integrate.nquad( func , ov , opts = opts)[0] 
 
+            #cancello
+            scalar.set_cp(i,0.0)
+        return out        
+    
 ###        
 def overlaps(a, b):
     c = [ max(a[0],b[0]) , min(a[1],b[1]) ]
