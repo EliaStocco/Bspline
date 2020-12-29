@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[51]:
+# In[10]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -762,7 +762,7 @@ class Bspline :
         
         #definisco la funzione da integrare
         #definisco la norma di Lebesgue
-        
+
         #if opts["norm"] == "L1" :
         integrate = lambda *xx : left.evaluate(xx)*right.evaluate(xx)
         #elif opts["norm"] == "L2" :
@@ -779,7 +779,7 @@ class Bspline :
         for k in range(0,self.dim()):
             conta = conta * opts["delta"][k]
         Xintegration = np.zeros(shape=(conta,self.dim()))
- 
+
 
 
         if opts["print"] == True : print("preparation",end="\r")
@@ -788,8 +788,9 @@ class Bspline :
         #if opts["print"] == True : print("\ndimension :",k)
         #d = der[k]
         #d.clear_cp()
-        left = self.copy()
-        right = self.copy()
+        scalar = self._scalar()
+        left   = scalar.copy()
+        right  = scalar.copy()
         left.clear_cp()
         right.clear_cp()
 
@@ -798,6 +799,7 @@ class Bspline :
 
         smd1D = am.copy()    
         smd1D[ smd1D == False ] = 0.0 #np.nan
+        smd1D[ smd1D == True ] = 0.0 #np.nan
 
         #calcolo il prodotto scalare dei gradiente
         n = am.shape[0]
@@ -824,19 +826,26 @@ class Bspline :
 
                 #
                 X = [ np.delete(np.linspace(ov[k][0],ov[k][1],                                            opts["delta"][k]+1,endpoint=False),0)                      for k in range(0,self.dim()) ]
+
+                area = 1
+                for k in range(0,self.dim()):
+                    area = area * ( ov[k][1] - ov[k][0] )
+
                 m = np.meshgrid(*X)
                 for k in range(0,self.dim()):
                     Xintegration[:,k] = m[k].flatten()
 
                 #
                 if opts["print"] == True : start = time.time()
-                    
+
                 y = integrate (Xintegration)
+                #print(y)
                 if opts["norm"] == "L1" :
-                    res = np.mean(y)
+                    res = np.mean(y)*area
                 elif opts["norm"] == "L2" :
-                    res = np.sqrt(np.mean(y))
-                                
+                    print("L2 norm")
+                    res = None #np.sqrt(np.mean(y))*area
+
                 #res = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
                 if opts["print"] == True : endt = time.time()
                 if opts["print"] == True : print(r,"-",c," -> ", endt - start," s")
@@ -884,7 +893,6 @@ class Bspline :
             df.at[df.index[i],"edge"] = np.any(e)
         df.drop(columns=allx,inplace=True)
         return df
-
     
     ###
     def stiffness_matrix(self,opts=None):
@@ -1055,24 +1063,48 @@ class Bspline :
         lv = self.load_vector(func,opts)
 
         om.replace(np.nan,0.0,inplace=True)
-        lv.replace(np.nan,0.0,inplace=True)
-
         omnp = np.asarray(om)
-        lvnp = np.asarray(lv)
 
-        cp  = np.linalg.solve(omnp,lvnp)
-        out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+        if self.codim() == 1 :
 
-        for i in range(len(cp)):
-            j = out.index[i]
-            self._cp[j]  = out.at[j,"cp"]
+            lv.replace(np.nan,0.0,inplace=True)
+
+            lvnp = np.asarray(lv)
+
+            cp  = np.linalg.solve(omnp,lvnp)
+            out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+
+            for i in range(len(cp)):
+                j = out.index[i]
+                self._cp[j]  = out.at[j,"cp"]
+
+        else :
+
+            lv2 = pd.DataFrame(columns=np.arange(0,self.codim()),index=lv.index)
+            for k in range(self.codim()):
+                for i in lv2.index :
+                    lv2.at[i,k] =lv.at[i,"cp"][k]
+            lv2.replace(np.nan,0.0,inplace=True)
+
+            out = pd.DataFrame(index=om.index,columns=np.arange(0,self.codim()))
+
+            for k in range(self.codim()):
+
+                lvnp = np.asarray(lv2[k])
+                cp  = np.linalg.solve(omnp,lvnp)
+
+                out[k] = cp
+
+            for i in range(len(cp)):
+                j = out.index[i]
+                self.set_cp(j, out.iloc[j])
         return out       
     
     ###
     def load_vector(self,func,opts=None): 
         
         opts = self.prepare_opts(opts)
-        
+
         # escludo subito dal calcolo i termini di bordo 
         #impostando a nan il valore in sm1D
         if opts["del-edge"] == True :
@@ -1093,25 +1125,50 @@ class Bspline :
         #else :
         #    il = [ int(i) for i in il ]
         scalar = self._scalar()
-        out = pd.DataFrame({"index" : il , "cp" : self._cp.copy().flatten().astype(float) })
+        scalar.clear_cp()
+        #piccola modifica : self -> scalar
+        out = pd.DataFrame(columns=["index","cp"],dtype=object)
+        out["index"] = il
+        #out = pd.DataFrame({"index" : il , "cp" : scalar._cp.copy().flatten().astype(float) })
         out.set_index("index",inplace=True)
 
         #definisco la norma di Lebesgue
-        integrate = lambda *xx : scalar.evaluate(xx)*func(xx)
-        
-            
+
+        def integrate_ND(xx):
+            a = scalar.evaluate(xx)
+            b = func(xx)
+            out = b.copy()
+            for i in range(self.codim()):
+                out[:,i] = a*b[:,i]
+            return out
+
+        def integrate_1D(xx):
+            A = scalar.evaluate(xx)
+            B = func(xx)
+            return [ float(a*b) for a,b in zip(A,B) ] 
+
+        if self.codim() == 1 :
+            integrate = integrate_1D
+        else :
+            integrate = integrate_ND
+        #integrate = lambda *xx : 
+
+
         for i in il :
-            
+
             #controllo che il termine non sia di bordo
             if opts["del-edge"] == True and edge.at[i,"edge"] == True :
                 out.at[i,"cp"] = np.nan
                 continue
-                        
+
             #i = tuple(i)
             scalar.set_cp(i,1.0)
             ov = self.basis_overlap(i,i,br) #overlap
 
             X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
+            area = 1
+            for k in range(0,self.dim()):
+                area = area * ( ov[k][1] - ov[k][0] )
             m = np.meshgrid(*X)
             for k in range(0,self.dim()):
                 Xintegration[:,k] = m[k].flatten()
@@ -1120,10 +1177,13 @@ class Bspline :
             if opts["print"] == True : start = time.time()
             y = integrate (Xintegration)
             if opts["norm"] == "L1" :
-                res = np.mean(y)
+                #modifica
+                res = np.mean(y, axis=0) if self.codim() > 1 else np.mean(y)
             elif opts["norm"] == "L2" :
-                res = np.sqrt(np.sum(np.power(y,2.0)))/len(y)
-            out.at[i,"cp"] = res
+                #modifica
+                res = np.sqrt(np.sum(np.power(y,2.0),axis=0))/len(y) if self.codim() > 1                 else np.sqrt(np.sum(np.power(y,2.0)))/len(y)
+            #modifica
+            out.at[i,"cp"] = res * area
             if opts["print"] == True : endt = time.time()
             if opts["print"] == True : print(i," -> ", endt - start," s")                
             #out[i] = integrate.nquad( func , ov , opts = opts)[0] 
