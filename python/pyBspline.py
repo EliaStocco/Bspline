@@ -1097,7 +1097,7 @@ class Bspline :
 
             for i in range(len(cp)):
                 j = out.index[i]
-                self.set_cp(j, out.iloc[j])
+                self.set_cp(j, out.iloc[i])
         return out       
     
     ###
