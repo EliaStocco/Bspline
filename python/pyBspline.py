@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[6]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[31]:
+# In[2]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[32]:
+# In[3]:
 
 
 import numpy as np
@@ -81,7 +81,7 @@ class knot_vector ():
 
 # ## Bspline class
 
-# In[33]:
+# In[4]:
 
 
 import copy
@@ -445,128 +445,88 @@ class Bspline :
     ###
     def derivative(self,n=1):        
         
-        if self.dim() == 1 :        
-            #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
-            # n = ordine della derivata
-            # calcolo la derivata n volte
-            for j in range(0,n):     
-                
-                der_kv = list()
-                for k in range(0,self.dim()):
-                
-                    der_sh = self._sh                
-                    kv     = self._kv[k]
-                    kt     = kv.knots()
-                    p      = kv.p()
-                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
-                #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
-                der    = Bspline(der_sh,der_kv)
+        #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
+        #der.clear_cp()
 
-                out = list()
-                N = list()
-                X = list()
-                for k in range(0,self.dim()):
-                    #prendo solo quelli lungo un asse
-                    kv     = self._kv[k]
+        out = list()
+        #derK = der.copy()
+        for K in range(0,self.dim()):
+
+            der_kv = list()
+            der_sh = self._sh     
+            for k in range(0,self.dim()):
+
+                kv     = self._kv[k]
+                kt     = kv.knots()
+
+                if k != K :
+                    der_kv.append(knot_vector(kv.p(),kv.n(),kt)) 
+                else :     
+                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
+            #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
+            derK = Bspline(der_sh,der_kv)
+
+            #
+            KV     = self._kv[K]
+            KT     = KV.knots()
+            P      = KV.p()
+
+            #print("KT :",KT)
+
+            #
+            #derK = der.copy()
+            N = list()
+            Ntot = 1
+            for k in range(0,self.dim()):
+                if k != K :
+                #prendo solo quelli lungo un asse
+                    kv     = derK._kv[k]
                     kt     = kv.knots()
                     p      = kv.p()
                     #devo ciclare su tutte le altre dimensioni
-                    N.append(kv.n())
-                    X.append(kt)
-                    
-                    for i in range(0,kv.n()-1):
-                        #print("i:",i)
-                        #print("self.get_cp(i+1):",self.get_cp(i+1))
-                        #print("self.get_cp(i)  :",self.get_cp(i))
-                        #print("kt[i+2]         :",kt [i+2])
-                        #print("kt[i+1]         :",kt[i+1])
-                        cp = p*(self.get_cp(i+1) - self.get_cp(i)) / ( kt[i+p+1] - kt[i+1] ) 
-                        der.set_cp(i,[cp]) 
 
-                #if j != n-1 :
-                self = der.copy()
+                    N.append(np.arange(0,kv.n()))
+                    Ntot = Ntot * kv.n()
+                    #X.append(kt)
 
-            return der    
+            w = list(np.meshgrid(*N))
+
+            #print(Ntot)
+            index = np.zeros(shape=(Ntot,self.dim()-1),dtype=int)
+            #print(index)
+            for i in range(0,len(w)):
+                a = w[i].reshape((Ntot,))
+                index[:,i] = a
+            #print(index)
+
+            for i in index:
+                left  = [ i[kk] for kk in range(0,len(i)) if kk < K  ] #i[0:K]
+                right = [ i[kk] for kk in range(0,len(i)) if kk >= K  ] #i[K:]
+                #print("K :",K,"->",left,"-",right)
+
+                #kv     = self._kv[K]
+                #kt     = kv.knots()
+                #p      = kv.p()
+
+                for k in range(0,KV.n()-1):
+                    ii  = list(left) + [k] + list(right)
+                    iip = list(left) + [k+1] + list(right)
+
+                    #ii  = ii.reverse()
+                    #iip = iip.reverse()
+                    #print(k,"-",ii)
+                    #a = self._cp[[0,0,0]]
+                    #b = self._cp[tuple(ii)]
+                    cp = P*(self._cp[tuple(iip)] - self._cp[tuple(ii)]) / ( KT[k+P+1] - KT[k+1] ) 
+                    #print("K :",K,"-> k:",k,"->",ii,"-> cp:",cp, "from ",self._cp[tuple(iip)],\
+                    #      " and " ,self._cp[tuple(ii)] )
+                    ii = ii[0] if self.dim() == 1 else ii
+                    derK.set_cp(ii,cp) 
+            out.append(derK)
+
+        if self.dim() == 1 :
+            return out[0]
         else :
-            
-            
-            #der.clear_cp()
-
-            out = list()
-            #derK = der.copy()
-            for K in range(0,self.dim()):
-                
-                der_kv = list()
-                der_sh = self._sh     
-                for k in range(0,self.dim()):
-                    
-                    kv     = self._kv[k]
-                    kt     = kv.knots()
-
-                    if k != K :
-                        der_kv.append(knot_vector(kv.p(),kv.n(),kt)) 
-                    else :     
-                        der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
-                #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
-                derK = Bspline(der_sh,der_kv)
-            
-                #
-                KV     = self._kv[K]
-                KT     = KV.knots()
-                P      = KV.p()
-                
-                #print("KT :",KT)
-                
-                #
-                #derK = der.copy()
-                N = list()
-                Ntot = 1
-                for k in range(0,self.dim()):
-                    if k != K :
-                    #prendo solo quelli lungo un asse
-                        kv     = derK._kv[k]
-                        kt     = kv.knots()
-                        p      = kv.p()
-                        #devo ciclare su tutte le altre dimensioni
-
-                        N.append(np.arange(0,kv.n()))
-                        Ntot = Ntot * kv.n()
-                        #X.append(kt)
-
-                w = list(np.meshgrid(*N))
-
-                #print(Ntot)
-                index = np.zeros(shape=(Ntot,self.dim()-1),dtype=int)
-                #print(index)
-                for i in range(0,len(w)):
-                    a = w[i].reshape((Ntot,))
-                    index[:,i] = a
-                #print(index)
-                    
-                for i in index:
-                    left  = [ i[kk] for kk in range(0,len(i)) if kk < K  ] #i[0:K]
-                    right = [ i[kk] for kk in range(0,len(i)) if kk >= K  ] #i[K:]
-                    #print("K :",K,"->",left,"-",right)
-                    
-                    #kv     = self._kv[K]
-                    #kt     = kv.knots()
-                    #p      = kv.p()
-                    
-                    for k in range(0,KV.n()-1):
-                        ii  = list(left) + [k] + list(right)
-                        iip = list(left) + [k+1] + list(right)
-                        
-                        #ii  = ii.reverse()
-                        #iip = iip.reverse()
-                        #print(k,"-",ii)
-                        #a = self._cp[[0,0,0]]
-                        #b = self._cp[tuple(ii)]
-                        cp = P*(self._cp[tuple(iip)] - self._cp[tuple(ii)]) / ( KT[k+P+1] - KT[k+1] ) 
-                        #print("K :",K,"-> k:",k,"->",ii,"-> cp:",cp, "from ",self._cp[tuple(iip)],\
-                        #      " and " ,self._cp[tuple(ii)] )
-                        derK.set_cp(ii,cp) 
-                out.append(derK)
-
             return out
     ###
     def _transpose(self,left,right):
@@ -593,7 +553,6 @@ class Bspline :
         X = np.asarray(x)
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
-    
     #Galerkin method
     ###
     def index_list(self):
@@ -1181,6 +1140,48 @@ def overlaps(a, b):
     else :
         return c
 
+
+# ### Derivative
+
+# $\mathbf{r}\left(t\right) = \sum_{k=0}^{n} \mathbf{P}_k N^{p}_{k}\left(t\right)$
+# 
+# $\dfrac{ \partial \mathbf{r}}{\partial t} =\sum_{k=0}^{n} \mathbf{P}_k \frac{ \partial  N^{p}_{k}\left(t\right) }{\partial t}$
+# 
+# $ N^{p}_{k}\left(t\right) = \dfrac{t - u_k}{u_{k+p}-u_{k}} N^{p-1}_{k}\left(t\right) - \dfrac{t - u_{k+p+1}}{u_{k+p+1}-u_{k+1}} N^{p-1}_{k+1}\left(t\right) $
+# 
+# Se $p=1$ otteniamo
+# $\dfrac{ \partial  N^{p}_{k}\left(t\right) }{\partial t} = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}}  \right] $
+# 
+# Procediamo per induzione (tenendo conto che passiamo da polinomi di grado $p$ a polinomi di grado $p-1$ e che stiamo toglendo il primo e ultimo elemento del knot vector)
+# 
+# $\dfrac{ \partial  N^{p}_{k} }{\partial t} =  %
+# \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} + %
+# \dfrac{t-u_k}{u_{k+p}-u_k}\dfrac{ \partial  N^{p-1}_{k} }{\partial t} - %
+# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} - %
+# \dfrac{t-u_{k+1}}{u_{k+p+1}-u_{k+1}}\dfrac{ \partial  N^{p-1}_{k+1}}{\partial t}  \\%
+# = \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
+# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} + %
+# \dfrac{\left(t-u_k\right)\left(p-1\right)}{u_{k+p}-u_k} \left[ \dfrac{N^{p-2}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-2}_{k+1}}{u_{k+p+1}-u_{k+1}} \right] - %
+# \dfrac{\left(t-u_{k+1}\right)\left(p-1\right)}{u_{k+p+1}-u_{k+1}} \left[ \dfrac{N^{p-2}_{k+1}}{u_{k+p+1}-u_{k+1}}  - \dfrac{N^{p-2}_{k+2}}{u_{k+p+2}-u_{k+2}} \right] \\
+# = \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
+# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} + %
+# \dfrac{\left(p-1\right)}{u_{k+p}-u_k} N^{p-1}_{k} -%
+# \dfrac{\left(p-1\right)}{u_{k+p+1}-u_{k+1}}N^{p-1}_{k+1} \\
+# = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
+# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} \right]$
+# 
+# dunque
+# 
+# $\dfrac{ \partial \mathbf{r}}{\partial t} = %
+# \sum_{k=0}^{n} \mathbf{P}_k p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
+# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} \right]  \\
+# = \sum_{k=0}^{n-1} N^{p-1}_{k+1} \left[ p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}}\right] \\
+# = \sum_{k=0}^{n-1} N^{p-1}_{k} \mathbf{Q}_{k} $
+# 
+# poiché $N^{p-1}_{k+1}$ valutato sul knot vector originale è uguale a $N^{p-1}_{k}$ valutato sul nuovo knot vector.
+# Abbiamo definito
+# 
+# $\mathbf{Q}_{k} = p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}} $
 
 # In[ ]:
 
