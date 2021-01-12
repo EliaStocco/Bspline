@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[11]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -568,29 +568,6 @@ class Bspline :
                 out.append(derK)
 
             return out
-
-    ###
-    def jacobian(self,x):
-        #sistemo dimensioni di x
-        X = self._correct_type_and_shape(x)
-        #
-        if len(X) == 1 :
-            
-            if self.dim() == 1 : #calcolo del gradiente
-                
-                der = self.derivative()
-                return der.evaluate(X)
-            
-                #return self._deBoor(X,der=True)
-            else : #calcolo della matrice jacobiana
-
-                output = np.zeros(shape=(self.dim(),self.codim()))
-                for i in range(self.dim()) :
-                    newBspline = self._transpose(0,i)
-                    curve_final = newBspline._iterative_deBoor(x)
-                    output[i] = curve_final.jacobian(X)
-        else :
-            return self._correct_type_and_shape([ self.jacobian(j) for j in X ])
     ###
     def _transpose(self,left,right):
         if left==right :
