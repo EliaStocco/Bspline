@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[4]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[25]:
+# In[1]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[3]:
+# In[2]:
 
 
 import numpy as np
@@ -102,7 +102,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[27]:
+# In[3]:
 
 
 import copy
@@ -822,10 +822,84 @@ class Bspline :
         for i in range(0,df.shape[0]):
             for k in allx :                
                 kv = self._kv[k]
-                e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
+                e[k] = df.iloc[i,k] <= 0 or df.iloc[i,k] >= kv.n()-1
+                #e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
             df.at[df.index[i],"edge"] = np.any(e)
         df.drop(columns=allx,inplace=True)
         return df
+    
+    ###
+    def approximate(self,func,opts=None):
+        #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
+        opts = self.prepare_opts(opts,opts2={"norm":"L1","del-edge":False})
+
+        om = self.overlap_matrix(opts)
+        lv = self.load_vector(func,opts)
+
+        om.replace(np.nan,0.0,inplace=True)
+        omnp = np.asarray(om)
+
+        if self.codim() == 1 :
+
+            lv.replace(np.nan,0.0,inplace=True)
+
+            lvnp = np.asarray(lv)
+
+            cp  = np.linalg.solve(omnp,lvnp)
+            out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+
+            for i in range(len(cp)):
+                j = out.index[i]
+                self._cp[j]  = out.at[j,"cp"]
+
+        else :
+
+            lv2 = pd.DataFrame(columns=np.arange(0,self.codim()),index=lv.index)
+            for k in range(self.codim()):
+                for i in lv2.index :
+                    lv2.at[i,k] =lv.at[i,"cp"][k]
+            lv2.replace(np.nan,0.0,inplace=True)
+
+            out = pd.DataFrame(index=om.index,columns=np.arange(0,self.codim()))
+
+            for k in range(self.codim()):
+
+                lvnp = np.asarray(lv2[k])
+                cp  = np.linalg.solve(omnp,lvnp)
+
+                out[k] = cp
+
+            for i in range(len(cp)):
+                j = out.index[i]
+                self.set_cp(j, out.iloc[i])
+        return out       
+       
+    ###
+    def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
+        sh = shape(dim=self.dim(),codim=1)
+        kv = self._kv        
+        return Bspline(sh,kv)#cp: default value
+    
+    ###
+    def Galerkin(self,func,opts=None):
+        opts = self.prepare_opts(opts)
+
+        sm = self.stiffness_matrix(opts)
+        lv = self.load_vector(func,opts)
+
+        sm.replace(np.nan,0.0,inplace=True)
+        lv.replace(np.nan,0.0,inplace=True)
+
+        smnp = np.asarray(sm)
+        lvnp = np.asarray(lv)
+
+        cp  = np.linalg.solve(smnp,lvnp)
+        out = pd.DataFrame(cp,index=sm.index,columns=["cp"])
+
+        for i in range(len(cp)):
+            j = out.index[i]
+            self._cp[j]  = out.at[j,"cp"]
+        return out      
     
     ###
     def stiffness_matrix(self,opts=None):
@@ -959,80 +1033,7 @@ class Bspline :
             out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=1)
 
         return out
-    
-    ###
-    def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
-        sh = shape(dim=self.dim(),codim=1)
-        kv = self._kv        
-        return Bspline(sh,kv)#cp: default value
-    
-    ###
-    def Galerkin(self,func,opts=None):
-        opts = self.prepare_opts(opts)
-
-        sm = self.stiffness_matrix(opts)
-        lv = self.load_vector(func,opts)
-
-        sm.replace(np.nan,0.0,inplace=True)
-        lv.replace(np.nan,0.0,inplace=True)
-
-        smnp = np.asarray(sm)
-        lvnp = np.asarray(lv)
-
-        cp  = np.linalg.solve(smnp,lvnp)
-        out = pd.DataFrame(cp,index=sm.index,columns=["cp"])
-
-        for i in range(len(cp)):
-            j = out.index[i]
-            self._cp[j]  = out.at[j,"cp"]
-        return out      
-    
-    ###
-    def approximate(self,func,opts=None):
-        #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
-        opts = self.prepare_opts(opts,opts2={"norm":"L1","del-edge":False})
-
-        om = self.overlap_matrix(opts)
-        lv = self.load_vector(func,opts)
-
-        om.replace(np.nan,0.0,inplace=True)
-        omnp = np.asarray(om)
-
-        if self.codim() == 1 :
-
-            lv.replace(np.nan,0.0,inplace=True)
-
-            lvnp = np.asarray(lv)
-
-            cp  = np.linalg.solve(omnp,lvnp)
-            out = pd.DataFrame(cp,index=om.index,columns=["cp"])
-
-            for i in range(len(cp)):
-                j = out.index[i]
-                self._cp[j]  = out.at[j,"cp"]
-
-        else :
-
-            lv2 = pd.DataFrame(columns=np.arange(0,self.codim()),index=lv.index)
-            for k in range(self.codim()):
-                for i in lv2.index :
-                    lv2.at[i,k] =lv.at[i,"cp"][k]
-            lv2.replace(np.nan,0.0,inplace=True)
-
-            out = pd.DataFrame(index=om.index,columns=np.arange(0,self.codim()))
-
-            for k in range(self.codim()):
-
-                lvnp = np.asarray(lv2[k])
-                cp  = np.linalg.solve(omnp,lvnp)
-
-                out[k] = cp
-
-            for i in range(len(cp)):
-                j = out.index[i]
-                self.set_cp(j, out.iloc[i])
-        return out       
-    
+     
     ###
     def load_vector(self,func,opts=None): 
         
