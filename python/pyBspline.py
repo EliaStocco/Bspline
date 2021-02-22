@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[6]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[2]:
+# In[25]:
 
 
 class shape :
@@ -51,7 +51,8 @@ class knot_vector ():
     def __init__(self,
                  p=0,
                  n=0,
-                 cls=np.zeros(shape=(0,1))):
+                 cls=np.zeros(shape=(0,1)),
+                 check_open=True):
         self._vect       = np.asarray(cls)
         self._pol_order  = p
         self._basis_card = n
@@ -63,11 +64,29 @@ class knot_vector ():
             print ("v : " , len(cls) )
             print ("knot_vector error : wrong vector size")
             raise Exception()
+            
+        # checking knot vector is sorted
+        if not np.all(np.diff(self._vect) >= 0) :
+            raise Exception("knot vector not sorted")
+            
+        if check_open == True and self.is_open() == False :
+            print ("knot_vector error : it is not an OPEN knot vector")
+            raise Exception()
     
     ###
     def p     (self): return self._pol_order
     def n     (self): return self._basis_card
-    def knots (self): return self._vect 
+    def knots (self): return self._vect     
+    ###
+    def is_open(self):
+        #A knot vector is said to be open if 
+        #its first and last knots appear p + 1 times.                       
+        p = self.p()
+        x = list(self._vect)
+        if x.count(x[0]) != p+1 or x.count(x[-1]) != p+1:
+            return False
+        return True
+                       
     ###
     def __len__(self): return len(self.knots())
     ###
@@ -76,12 +95,14 @@ class knot_vector ():
         print("base caridnality  : " , self.n())
         print("knots             : " , self.knots())
     
-                            
+def uniform_open_kv(xmin,xmax,p,n):
+    v = np.concatenate((np.linspace(xmin,xmin,p),np.linspace(xmin,xmax,n-p+1),np.linspace(xmax,xmax,p)))
+    return knot_vector(p,n,v)                     
 
 
 # ## Bspline class
 
-# In[4]:
+# In[27]:
 
 
 import copy
@@ -324,42 +345,18 @@ class Bspline :
         #t: Array of knot positions, needs to be padded as described above.
         #c: Array of control points.
         #p: Degree of B-spline.
-        
-        
-        #print("k:",k)
-        #print("x:",x)
-        #print("t:",t)
-        #print("c:",c)
-        #print("type(c)",type(c))
-        #print("p:",p)
-        #print("len(c):",len(c))
-        #print("len(t):",len(t))  
-        
-        
-        #d = [ c[j + k - p] if for j in range(0, p+1)]
-        d = np.zeros(p+1,dtype=object)
-        #d.fill(self.Type_out())
+
+        d = np.zeros(p+1,dtype=object)        
         for  j in range(0,p+1) :
             d[j] = c[j+k-p] if 0 <= j+k-p < len(c) else self.Type_out()
-            #if 0 <= j+k-p < len(c) :
-            #    d[j]=c[j+k-p]
-            #else :
-            #    d[j] = self.Type_out()        
+            
         
-        #print("d:",d)
-        #print("type(d)",type(d))
-
-        for r in range(1, p + 1):
-            #print("r:",r)
+        for r in range(1, p + 1):            
             for j in range(p, r - 1, -1): 
                 right = j+1+k-r
                 left  = j+k-p
-                if 0 <= left < len(t) and 0 <= right < len(t) :
-                    #print("j:",j)
-                    #print("j+k-p:",j + k - p)
-                    #print("j+1+k-r:",j + 1 + k - r)
-                    alpha = (x - t[left]) / (t[right] - t[left])
-                    #print("alpha(",j,"):",alpha)
+                if 0 <= left < len(t) and 0 <= right < len(t) :                    
+                    alpha = (x - t[left]) / (t[right] - t[left])                    
                     d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
 
         return d[p]
@@ -1152,7 +1149,7 @@ def overlaps(a, b):
 # Se $p=1$ otteniamo
 # $\dfrac{ \partial  N^{p}_{k}\left(t\right) }{\partial t} = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}}  \right] $
 # 
-# Procediamo per induzione (tenendo conto che passiamo da polinomi di grado $p$ a polinomi di grado $p-1$ e che stiamo toglendo il primo e ultimo elemento del knot vector)
+# Procediamo per induzione (tenendo conto che passiamo da polinomi di grado $p$ a polinomi di grado $p-1$ e che stiamo togliendo il primo e ultimo elemento del knot vector)
 # 
 # $\dfrac{ \partial  N^{p}_{k} }{\partial t} =  %
 # \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} + %
@@ -1178,10 +1175,20 @@ def overlaps(a, b):
 # = \sum_{k=0}^{n-1} N^{p-1}_{k+1} \left[ p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}}\right] \\
 # = \sum_{k=0}^{n-1} N^{p-1}_{k} \mathbf{Q}_{k} $
 # 
-# poiché $N^{p-1}_{k+1}$ valutato sul knot vector originale è uguale a $N^{p-1}_{k}$ valutato sul nuovo knot vector.
+# poiché $N^{p-1}_{k+1}$ valutato sul knot vector originale è uguale a $N^{p-1}_{k}$ valutato sul nuovo (open) knot vector.
 # Abbiamo definito
 # 
 # $\mathbf{Q}_{k} = p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}} $
+
+# ### Surface Bspline
+
+# $\mathbf{r}\left(x,y\right) = \sum_{i=0}^{n}\sum_{j=0}^{m} \mathbf{P}_{ij} N^{p}_{i}\left(x\right) M^{q}_{j}\left(y\right) \\
+# = \sum_{i=0}^{n} N^{p}_{i}\left(x\right) \left( \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) \right)  \\ 
+# = \sum_{i=0}^{n} N^{p}_{i}\left(x\right) \mathbf{Q}_{i}\left(y\right)$
+# 
+# con 
+# 
+# $ \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) = \mathbf{Q}_{i}\left(y\right) $
 
 # In[ ]:
 
