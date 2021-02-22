@@ -194,6 +194,11 @@ class Bspline :
         #self.clear_cp()
         self._cp = np.zeros(shape=tuple(map(int,init)),dtype=object)
         self._cp.fill(self.Type_out())
+        
+        #
+        self._stiffness_matrix = None
+        self._overlap_matrix = None
+        self._ready = False
         #print("self._cp : ",self._cp)
         return self    
     ###
@@ -249,6 +254,7 @@ class Bspline :
         #        print("error : Bspline.set")
         #        raise Exception()
         #    return False
+        self._ready = False
         return True                                     
     ### some function returing some variables, not very usefull...
     def knots_vectors(self): return self._kv
@@ -264,6 +270,7 @@ class Bspline :
     ###
     def clear_cp (self) : 
         self._cp = np.zeros(self._cp.shape)
+        self_ready = False
     ###
     def show(self,what="all"):
         
@@ -552,7 +559,7 @@ class Bspline :
         return X
     #Galerkin method
     ###
-    def index_list(self):
+    def index_list(self,which="all"):
         N = list()
         Ntot = 1
         for k in range(0,self.dim()):
@@ -574,7 +581,14 @@ class Bspline :
             a = w[i].reshape((Ntot,))
             index[:,i] = a
         #print(index)
-        return index
+        if which == "all" :
+            return index
+        else:
+            edge = self.edge()
+            if which == "edge" :
+                return index[ edge["edge"] == True ]
+            elif which == "int" :
+                return index[ edge["edge"] == False ]            
     
     ###
     def basis_range(self):
@@ -691,6 +705,12 @@ class Bspline :
     ###
     def overlap_matrix(self,opts=None):
         
+        if opts["ready"] == False:
+            self._ready = False
+            
+        if self._ready == True :
+            return self._overlap_matrix
+        
         opts = self.prepare_opts(opts)
         
         #definisco la funzione da integrare
@@ -793,6 +813,7 @@ class Bspline :
                 #cancello
             left.set_cp(r,0.0)
 
+        self._overlap_matrix = smd1D
         return smd1D
             #smd.append(smd1D)
         
@@ -881,28 +902,87 @@ class Bspline :
         return Bspline(sh,kv)#cp: default value
     
     ###
-    def Galerkin(self,func,opts=None):
+    def get_gD_shape(self):
+        index = self.index_list("edge")
+        it = [ tuple(j) for j in index ]
+        columns = ["Dirichlet"]
+        return pd.DataFrame(data=np.full(len(it),0),index=it,columns=columns)
+    ###
+    def Galerkin(self,f,gD=None,opts=None):
+        
+        #               u = unknown function
+        #           Lap u = f    on Omega
+        #               u = gD   on Dirichlet boundary
+        # grad u x normal = gVN  on Von Nuemann boundary
+        
         opts = self.prepare_opts(opts)
 
-        sm = self.stiffness_matrix(opts)
-        lv = self.load_vector(func,opts)
+        #edge
+        edge = self.edge()
 
+        #stiffness matrix
+        sm = self.stiffness_matrix(opts) 
         sm.replace(np.nan,0.0,inplace=True)
+
+        #
+        index_int  = edge.index[ edge["edge"] == False ]
+        index_edge = edge.index[ edge["edge"] == True  ]
+
+        #
+        dof_int = sm.copy()
+        dof_int.drop( index_edge ,inplace = True,axis=0)
+        dof_int.drop( index_edge ,inplace = True,axis=1)
+
+        #
+        dof_edge = sm.copy()
+        dof_edge.drop( index_edge ,inplace = True,axis=0)
+        dof_edge.drop( index_int  ,inplace = True,axis=1)
+
+        #load vector
+        lv = self.load_vector(f,opts)        
         lv.replace(np.nan,0.0,inplace=True)
+        lv.drop( index_edge  ,inplace = True)  
 
-        smnp = np.asarray(sm)
+        #convert into numpy array
+        dinp = np.asarray(dof_int)
+        denp = np.asarray(dof_edge)
+        #
+        if gD is None :
+            gD = self.get_gD_shape()
+        #
         lvnp = np.asarray(lv)
+        gDnp = np.asarray(gD)
+        edlv = np.dot(denp,gDnp)
+        
+        #solve linear system
+        cpint = np.linalg.solve(dinp,lvnp-edlv) 
 
-        cp  = np.linalg.solve(smnp,lvnp)
-        out = pd.DataFrame(cp,index=sm.index,columns=["cp"])
+        #
+        index = self.index_list()
+        it = [ tuple(j) for j in index ]
+        out = pd.DataFrame(index=it,columns=["cp"])
 
-        for i in range(len(cp)):
-            j = out.index[i]
-            self._cp[j]  = out.at[j,"cp"]
+        #
+        for i in range(len(index_int)):
+            j = index_int[i]
+            self._cp[j] = cpint[i]
+            out.iloc[out.index == j] = cpint[i]
+        #
+        for i in range(len(index_edge)):
+            j = index_edge[i]
+            self._cp[j] = gDnp[i]
+            out.iloc[out.index == j] = gDnp[i]
+        #
         return out      
     
     ###
     def stiffness_matrix(self,opts=None):
+        
+        if opts["ready"] == False:
+            self._ready = False
+            
+        if self._ready == True :
+            return self._stiffness_matrix
         
         opts = self.prepare_opts(opts)
 
@@ -958,10 +1038,10 @@ class Bspline :
                 r = am.index[i] 
                 
                 #controllo che il termine non sia di bordo
-                if edge.at[r,"edge"] == True :
-                    sm1D.at[r,:] = np.nan
-                    sm1D.at[:,r] = np.nan
-                    continue
+                #if edge.at[r,"edge"] == True :
+                #    sm1D.at[r,:] = np.nan
+                #    sm1D.at[:,r] = np.nan
+                #    continue
                     
                 #left.clear_cp()
                 left.set_cp(r,1.0)
@@ -987,10 +1067,10 @@ class Bspline :
                     c = am.columns[j]   
                     
                     #controllo che il termine non sia di bordo
-                    if edge.at[c,"edge"] == True :
-                        sm1D.at[c,:] = np.nan
-                        sm1D.at[:,c] = np.nan
-                        continue
+                    #if edge.at[c,"edge"] == True :
+                    #    sm1D.at[c,:] = np.nan
+                    #    sm1D.at[:,c] = np.nan
+                    #    continue
                     
                     
                     #right.clear_cp()
@@ -1029,9 +1109,11 @@ class Bspline :
 
             sm.append(sm1D)
             out = sum(sm)
-            out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=0)
-            out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=1)
+            #
+            #out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=0)
+            #out.drop(edge.index[ edge["edge"] == True ],inplace = True,axis=1)
 
+        self._stiffness_matrix = out
         return out
      
     ###
@@ -1041,8 +1123,8 @@ class Bspline :
 
         # escludo subito dal calcolo i termini di bordo 
         #impostando a nan il valore in sm1D
-        if opts["del-edge"] == True :
-            edge = self.edge()
+        #if opts["del-edge"] == True :
+        edge = self.edge()
 
         #
         X = np.zeros(self.dim())
@@ -1091,7 +1173,7 @@ class Bspline :
         for i in il :
 
             #controllo che il termine non sia di bordo
-            if opts["del-edge"] == True and edge.at[i,"edge"] == True :
+            if edge.at[i,"edge"] == True :
                 out.at[i,"cp"] = np.nan
                 continue
 
@@ -1124,8 +1206,8 @@ class Bspline :
 
             #cancello
             scalar.set_cp(i,0.0)
-        if opts["del-edge"] == True:
-            out = out.drop(edge.index[ edge["edge"] == True ])  
+        #if opts["del-edge"] == True:
+        #    out = out.drop(edge.index[ edge["edge"] == True ])  
             
         return out       
     
