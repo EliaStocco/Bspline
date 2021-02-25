@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[12]:
+# In[9]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[9]:
+# In[10]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[10]:
+# In[11]:
 
 
 import numpy as np
@@ -106,7 +106,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[11]:
+# In[12]:
 
 
 import copy
@@ -320,10 +320,12 @@ class Bspline :
         #print("x:",x)
         output = -1
         for i in range(0,len(t)-1) :
-            if t[i] <= x and x < t[i+1] :
+            if t[i] == t[i+1]:
+                continue
+            if t[i] <= x and x <= t[i+1] :
                 output = i
-        #if x == t[-1] : #ultimo elemento
-        #    output = i
+        #if x >= t[-1] : #ultimo elemento
+        #    output = -2
         return output
     ###
     def _deBoor(self,x,der=False):
@@ -345,7 +347,11 @@ class Bspline :
         if k < 0 :
             if self._print == True :
                 print("deBoor error : k<0")
+            #if k == -1 :
             return self.Type_out()
+            #elif k == -2 :
+            #    k = len(t)-2
+            #    x = t[-1]
         
         #valuto la funzione
         #if der == False :
