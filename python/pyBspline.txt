@@ -1,16 +1,4 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[42]:
-
-
-get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
-
-
-# ## Shape class
-
-# In[39]:
-
+!jupyter nbconvert --to script pyBspline.ipynb
 
 class shape :
     
@@ -32,12 +20,6 @@ class shape :
     #def astuple(self):
     #    return (self.dim,self.codim)
         
-
-
-# ## Knot vector class
-
-# In[40]:
-
 
 import numpy as np
 
@@ -102,12 +84,6 @@ class knot_vector ():
 def uniform_open_kv(xmin,xmax,p,n):
     v = np.concatenate((np.linspace(xmin,xmin,p),np.linspace(xmin,xmax,n-p+1),np.linspace(xmax,xmax,p)))
     return knot_vector(p,n,v)                     
-
-
-# ## Bspline class
-
-# In[41]:
-
 
 import copy
 import pandas as pd
@@ -199,16 +175,13 @@ class Bspline :
         self._cp = np.zeros(shape=tuple(map(int,init)),dtype=object)
         self._cp.fill(self.Type_out())
         if self.codim() == 1 :
-            self._cp = self._cp.astype(float)
+            self._cp.astype(float)
         
         #
         self._stiffness_matrix = None
         self._overlap_matrix = None
         self._ready_sm = False #stiffness matrix
         self._ready_om = False #overlap matrix
-        
-        self._trace_Bspline = [ 0 for i in range(self.dim())]
-        self._ready_trace = [ False for i in range(self.dim())]
         #print("self._cp : ",self._cp)
         return self    
     ###
@@ -623,7 +596,11 @@ class Bspline :
             kt = kv.knots()
             n  = kv.n()
             p  = kv.p() 
-            data = {"index":range(0,n),                   "i-min":range(0,n),                   "i-max":np.arange(0,n)+p+1,                   "x-min":kt[0:n],                   "x-max":kt[p+1:p+1+n]}
+            data = {"index":range(0,n),\
+                   "i-min":range(0,n),\
+                   "i-max":np.arange(0,n)+p+1,\
+                   "x-min":kt[0:n],\
+                   "x-max":kt[p+1:p+1+n]}
             br = pd.DataFrame(data)#np.array(shape=(n,3))
             basis_range.append(br)
 
@@ -802,7 +779,9 @@ class Bspline :
                 ov = self.basis_overlap(r,c,br)
 
                 #
-                X = [ np.delete(np.linspace(ov[k][0],ov[k][1],                                            opts["delta"][k]+1,endpoint=False),0)                      for k in range(0,self.dim()) ]
+                X = [ np.delete(np.linspace(ov[k][0],ov[k][1],\
+                                            opts["delta"][k]+1,endpoint=False),0) \
+                     for k in range(0,self.dim()) ]
 
                 area = 1
                 for k in range(0,self.dim()):
@@ -860,9 +839,6 @@ class Bspline :
             opts["ready_om"] = True
         if "ready_sm" not in opts :
             opts["ready_sm"] = True
-        if "ready_trace" not in opts :
-            opts["ready_trace"] = [ False for i in range(self.dim())]
-        
         return opts
     
     ###
@@ -926,7 +902,7 @@ class Bspline :
                 j = out.index[i]
                 self.set_cp(j, out.iloc[i])
         if self.codim() == 1 :
-            self._cp = self._cp.astype(float)
+            self._cp.astype(float)
         return out       
        
     ###
@@ -979,90 +955,21 @@ class Bspline :
                     
         return xint
     
-    ###
-    def trace(self,n,opts):
-        
-        
-        opts = self.prepare_opts(opts)
-        
-        if opts["ready_trace"][n] == False:
-            self._ready_trace[n] = False
-            
-        if self._ready_trace[n] == True :
-            return self._trace_Bspline[n]
-        
-        # operazione di traccia: 
-        # https://en.wikipedia.org/wiki/Trace_operator
-        # restringo il dominio di una funzione al suo bordo
-        # una superficie diventa una curva
-        
-        # n : dimensione da tracciare
-        
-        new_sh = shape(dim=self.dim()-1,codim=self.codim())        
-        kv     =    [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != n ]    
-        curve  = Bspline(new_sh,kv)
-        
-        self._ready_trace[n] = True
-        self._trace_Bspline[n] = curve.copy()
-        
-        return curve
-        
-    
     ### 
-    def Dirichlet_BC(self,gD,opts):
+    def Dirichlet_BC(self,gD):
         
-        opts = self.prepare_opts(opts)
-
-        new_sh     = shape(dim=self.dim()-1,codim=self.codim())        
-        for i in range(self.dim()):
-            k = i 
-            #kv = [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != k ]    
-            #curve      = Bspline(new_sh,kv)
-            curve = self.trace(k,opts)
-
-            # to_approx: 
-            def to_approx_private(xx,x_min_max,k,gD):        
-                xyz = np.zeros(shape=(len(xx),self.dim()))
-                j = 0
-                for i in range(self.dim()):
-                    if i != k :
-                        xyz[:,i] = xx[:,j]
-                        j = j+1
-                    else :
-                        xyz[:,k] = np.full(len(xx),x_min_max) 
-                return gD(xyz)
-
-            #
-            i1 = 0
-            i2 = self.knots_vectors()[k].n()-1
-            xmin = min(self.knots_vectors()[k].knots())
-            xmax = max(self.knots_vectors()[k].knots())
-            # xmin,xmax
-            for index,x_min_max in zip([i1,i2],[xmin,xmax]) :
-
-                xmin = min(self.knots_vectors()[k].knots())
-                to_approx = lambda xx : to_approx_private(xx,x_min_max,k,gD)
-                curve.approximate(to_approx,opts)
-
-                cp = curve.control_points()
-                for i in cp.index :
-                    j = list(i)
-                    j.insert(k,index)
-                    self.set_cp(j,cp[cp.index == i])
-
-        cp = self.control_points()
-        ii = self.index_list("edge")
-        it = [ tuple(i) for i in ii ]
-        return cp.loc[it]
-
-        #xint = self._get_xint()        
+        xint = self._get_xint()
+        
         # convert into numpy array
-        #xintnp = np.array(xint)        
+        xintnp = np.array(xint)
+        
         # calcolo gD nei punti interpolatori
-        #yintnp = gD(xint)        
+        yintnp = gD(xint)
+        
         #converto in DataFrame
-        #yint = pd.DataFrame(yintnp,index=xint.index)        
-        #return yint
+        yint = pd.DataFrame(yintnp,index=xint.index)
+        
+        return yint
         
     ###
     def Galerkin(self,f,gD=None,opts=None):
@@ -1114,11 +1021,11 @@ class Bspline :
         # approssimare la funzione gD tramite questa Bspline
         # i control points di questa diventeranno gDv
         # cioè i control points di bordo della Bspline originaria
-        gDv = self.Dirichlet_BC(gD,opts)
+        gDv = self.Dirichlet_BC(gD)
         
         #
         lvnp = np.asarray(lv)
-        gDnp = np.asarray(gDv,dtype=float)
+        gDnp = np.asarray(gDv)
         edlv = np.dot(denp,gDnp)
         
         #solve linear system
@@ -1141,7 +1048,7 @@ class Bspline :
             out.iloc[out.index == j] = gDnp[i]
         #
         if self.codim() == 1 :
-            self._cp = self._cp.astype(float)
+            self._cp.astype(float)
         return out      
     
     ###
@@ -1351,7 +1258,8 @@ class Bspline :
             scalar.set_cp(i,1.0)
             ov = self.basis_overlap(i,i,br) #overlap
 
-            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
+            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0) \
+                 for k in range(0,self.dim()) ]
             area = 1
             for k in range(0,self.dim()):
                 area = area * ( ov[k][1] - ov[k][0] )
@@ -1367,7 +1275,8 @@ class Bspline :
                 res = np.mean(y, axis=0) if self.codim() > 1 else np.mean(y)
             elif opts["norm"] == "L2" :
                 #modifica
-                res = np.sqrt(np.sum(np.power(y,2.0),axis=0))/len(y) if self.codim() > 1                 else np.sqrt(np.sum(np.power(y,2.0)))/len(y)
+                res = np.sqrt(np.sum(np.power(y,2.0),axis=0))/len(y) if self.codim() > 1 \
+                else np.sqrt(np.sum(np.power(y,2.0)))/len(y)
             #modifica
             out.at[i,"cp"] = res * area
             if opts["print"] == True : endt = time.time()
@@ -1389,62 +1298,5 @@ def overlaps(a, b):
         return None
     else :
         return c
-
-
-# ### Derivative
-
-# $\mathbf{r}\left(t\right) = \sum_{k=0}^{n} \mathbf{P}_k N^{p}_{k}\left(t\right)$
-# 
-# $\dfrac{ \partial \mathbf{r}}{\partial t} =\sum_{k=0}^{n} \mathbf{P}_k \frac{ \partial  N^{p}_{k}\left(t\right) }{\partial t}$
-# 
-# $ N^{p}_{k}\left(t\right) = \dfrac{t - u_k}{u_{k+p}-u_{k}} N^{p-1}_{k}\left(t\right) - \dfrac{t - u_{k+p+1}}{u_{k+p+1}-u_{k+1}} N^{p-1}_{k+1}\left(t\right) $
-# 
-# Se $p=1$ otteniamo
-# $\dfrac{ \partial  N^{p}_{k}\left(t\right) }{\partial t} = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}}  \right] $
-# 
-# Procediamo per induzione (tenendo conto che passiamo da polinomi di grado $p$ a polinomi di grado $p-1$ e che stiamo togliendo il primo e ultimo elemento del knot vector)
-# 
-# $\dfrac{ \partial  N^{p}_{k} }{\partial t} =  %
-# \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} + %
-# \dfrac{t-u_k}{u_{k+p}-u_k}\dfrac{ \partial  N^{p-1}_{k} }{\partial t} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} - %
-# \dfrac{t-u_{k+1}}{u_{k+p+1}-u_{k+1}}\dfrac{ \partial  N^{p-1}_{k+1}}{\partial t}  \\%
-# = \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} + %
-# \dfrac{\left(t-u_k\right)\left(p-1\right)}{u_{k+p}-u_k} \left[ \dfrac{N^{p-2}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-2}_{k+1}}{u_{k+p+1}-u_{k+1}} \right] - %
-# \dfrac{\left(t-u_{k+1}\right)\left(p-1\right)}{u_{k+p+1}-u_{k+1}} \left[ \dfrac{N^{p-2}_{k+1}}{u_{k+p+1}-u_{k+1}}  - \dfrac{N^{p-2}_{k+2}}{u_{k+p+2}-u_{k+2}} \right] \\
-# = \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} + %
-# \dfrac{\left(p-1\right)}{u_{k+p}-u_k} N^{p-1}_{k} -%
-# \dfrac{\left(p-1\right)}{u_{k+p+1}-u_{k+1}}N^{p-1}_{k+1} \\
-# = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} \right]$
-# 
-# dunque
-# 
-# $\dfrac{ \partial \mathbf{r}}{\partial t} = %
-# \sum_{k=0}^{n} \mathbf{P}_k p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} \right]  \\
-# = \sum_{k=0}^{n-1} N^{p-1}_{k+1} \left[ p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}}\right] \\
-# = \sum_{k=0}^{n-1} N^{p-1}_{k} \mathbf{Q}_{k} $
-# 
-# poiché $N^{p-1}_{k+1}$ valutato sul knot vector originale è uguale a $N^{p-1}_{k}$ valutato sul nuovo (open) knot vector.
-# Abbiamo definito
-# 
-# $\mathbf{Q}_{k} = p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}} $
-
-# ### Surface Bspline
-
-# $\mathbf{r}\left(x,y\right) = \sum_{i=0}^{n}\sum_{j=0}^{m} \mathbf{P}_{ij} N^{p}_{i}\left(x\right) M^{q}_{j}\left(y\right) \\
-# = \sum_{i=0}^{n} N^{p}_{i}\left(x\right) \left( \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) \right)  \\ 
-# = \sum_{i=0}^{n} N^{p}_{i}\left(x\right) \mathbf{Q}_{i}\left(y\right)$
-# 
-# con 
-# 
-# $ \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) = \mathbf{Q}_{i}\left(y\right) $
-
-# In[ ]:
-
-
 
 
