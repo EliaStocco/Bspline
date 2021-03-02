@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[42]:
+# In[21]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[39]:
+# In[22]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[40]:
+# In[23]:
 
 
 import numpy as np
@@ -106,7 +106,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[41]:
+# In[24]:
 
 
 import copy
@@ -471,14 +471,21 @@ class Bspline :
                 out = out.reshape((len(out,)))
             return out
     ###
-    def derivative(self,n=1):        
+    def derivative(self,axis=-1):        
         
         #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
         #der.clear_cp()
 
         out = list()
         #derK = der.copy()
-        for K in range(0,self.dim()):
+        
+        # axis
+        if axis == -1 :
+            axis = [ i for i in range(self.dim()) ]
+        if hasattr(axis, '__len__') == False :
+            axis = [axis]
+        
+        for K in axis : #range(0,self.dim()):
 
             der_kv = list()
             der_sh = self._sh     
@@ -552,7 +559,7 @@ class Bspline :
                     derK.set_cp(ii,cp) 
             out.append(derK)
 
-        if self.dim() == 1 :
+        if self.dim() == 1 or len(axis) == 1 :
             return out[0]
         else :
             return out
@@ -980,7 +987,7 @@ class Bspline :
         return xint
     
     ###
-    def trace(self,n,opts):
+    def trace(self,n,opts=None):
         
         
         opts = self.prepare_opts(opts)
@@ -1011,27 +1018,26 @@ class Bspline :
     ### 
     def Dirichlet_BC(self,gD,opts):
         
+        # to_approx: 
+        def to_approx_private(xx,x_min_max,kk,gD):        
+            xyz = np.zeros(shape=(len(xx),self.dim()))
+            jj = 0
+            for ii in range(self.dim()):
+                if ii != kk :
+                    xyz[:,ii] = xx[:,jj]
+                    jj = jj+1
+                else :
+                    xyz[:,kk] = np.full(len(xx),x_min_max) 
+            return gD(xyz)
+        
         opts = self.prepare_opts(opts)
 
         new_sh     = shape(dim=self.dim()-1,codim=self.codim())        
-        for i in range(self.dim()):
-            k = i 
+        for k in range(self.dim()):
+            #k = i 
             #kv = [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != k ]    
             #curve      = Bspline(new_sh,kv)
             curve = self.trace(k,opts)
-
-            # to_approx: 
-            def to_approx_private(xx,x_min_max,k,gD):        
-                xyz = np.zeros(shape=(len(xx),self.dim()))
-                j = 0
-                for i in range(self.dim()):
-                    if i != k :
-                        xyz[:,i] = xx[:,j]
-                        j = j+1
-                    else :
-                        xyz[:,k] = np.full(len(xx),x_min_max) 
-                return gD(xyz)
-
             #
             i1 = 0
             i2 = self.knots_vectors()[k].n()-1
@@ -1068,9 +1074,8 @@ class Bspline :
     def Galerkin(self,f,gD=None,opts=None):
         
         #               u = unknown function
-        #           Lap u = f    on Omega
+        #          -Lap u = f    on Omega
         #               u = gD   on Dirichlet boundary
-        # grad u x normal = gVN  on Von Nuemann boundary
         
         opts = self.prepare_opts(opts)
 
@@ -1081,16 +1086,16 @@ class Bspline :
         sm = self.stiffness_matrix(opts) 
         sm.replace(np.nan,0.0,inplace=True)
 
-        #
+        #indici dei dof interni e di bordo
         index_int  = edge.index[ edge["edge"] == False ]
         index_edge = edge.index[ edge["edge"] == True  ]
 
-        #
+        #degrees of freedem: internal
         dof_int = sm.copy()
         dof_int.drop( index_edge ,inplace = True,axis=0)
         dof_int.drop( index_edge ,inplace = True,axis=1)
 
-        #
+        #degrees of freedem: edge
         dof_edge = sm.copy()
         dof_edge.drop( index_edge ,inplace = True,axis=0)
         dof_edge.drop( index_int  ,inplace = True,axis=1)
@@ -1116,25 +1121,30 @@ class Bspline :
         # cioè i control points di bordo della Bspline originaria
         gDv = self.Dirichlet_BC(gD,opts)
         
-        #
+        #load vector
         lvnp = np.asarray(lv)
+        #punti di bordo
         gDnp = np.asarray(gDv,dtype=float)
+        #prodotto righe per colonne
         edlv = np.dot(denp,gDnp)
         
         #solve linear system
         cpint = np.linalg.solve(dinp,lvnp-edlv) 
 
-        #
+        #preparo gli indice della variabile di output
         index = self.index_list()
         it = [ tuple(j) for j in index ]
         out = pd.DataFrame(index=it,columns=["cp"])
 
-        #
+        #assegno ai control points i valori calcolati
+        #valori interni
         for i in range(len(index_int)):
             j = index_int[i]
             self._cp[j] = cpint[i]
             out.iloc[out.index == j] = cpint[i]
-        #
+            
+        #assegno ai control points i valori calcolati
+        #valori di bordo interpolanti
         for i in range(len(index_edge)):
             j = index_edge[i]
             self._cp[j] = gDnp[i]
@@ -1149,13 +1159,14 @@ class Bspline :
         
         opts = self.prepare_opts(opts)
         
+        # controllo se ho già calcolato la matrici di stiffness
         if opts["ready_sm"] == False:
             self._ready_sm = False
             
         if self._ready_sm == True :
             return self._stiffness_matrix
 
-        #matrice di overlap delle derivate
+        # omd : overlap matrix of derivatives
         omd = list()
         der = self.derivative() if self.dim() > 1 else [self.derivative()]
         if opts["print"] == True : print("preparation",end="\r")
@@ -1164,19 +1175,20 @@ class Bspline :
             omd1D = der[k].overlap_matrix(opts)
             omd.append(omd1D)
         del omd1D
-        #smd : overlap matrix derivatives
-        #smd : matrice di overlap delle derivate
+        # smd : matrice di overlap delle derivate
 
         ###
-        #calcolo la stifness matrix vera e propria
+        # am: adjacency matrix
         am = self.adjacency_matrix()
-        #matrice di stiffness di una sola dimensione
+        # sm1D : stiffness matrix 1D
+        # considero le derivate parziali lungo solo un asse
         sm1D = pd.DataFrame(0.0,index=am.index,columns=am.columns)
         n = sm1D.shape[0]#quadrata
         
         # escludo subito dal calcolo i termini di bordo 
-        #impostando a nan il valore in sm1D
-        edge = self.edge()
+        # impostando a nan il valore in sm1D
+        # edge : questo non dovrebbe servire più
+        #edge = self.edge()
                 
         
         #sm1D = am.copy()    
@@ -1185,11 +1197,14 @@ class Bspline :
         #stiffness matrix: sum over all dimensione
         #matrice stiffness finale, è la somma della matrici parziali (su una sola dimensione)
         #questa è in realtà una lista contenente le matrici parziali
+        
+        # sm : stiffness matrix
+        # lista che contiene tutte le sm1D
         sm = list()
 
         
 
-        #creo una copia della Bspline
+        # creo due copie della Bspline
         left  = self.copy()
         left.clear_cp()
         right = self.copy()
@@ -1214,17 +1229,24 @@ class Bspline :
                     
                 #left.clear_cp()
                 left.set_cp(r,1.0)
-                #calcolo la derivata della funzione di base di sinistra
-                dl = left.derivative()[k] if self.dim() > 1 else left.derivative()
-
+                # calcolo la derivata della funzione di base di sinistra
+                # dl : derivatives left
+                # ho modificato gli input della funzione derivative
+                #dl = left.derivative()[k] if self.dim() > 1 else left.derivative()
+                dl = left.derivative(axis=k) #if self.dim() > 1 else left.derivative()
+                
                 #cancello, tanto non mi serve valutarla
                 #mi servono soltanto i coefficienti della derivata
                 left.set_cp(r,0.0)
 
 
+                # ATTENZIONE :
+                # qui inizia l'algoritmo vero e proprio
+                
+                
                 #control points, modifico il tipo e cerco quelli non nulli
                 cpl = dl._cp.astype(float) 
-                #non zero control points (left) indices
+                # nzcpl : non zero control points (left) indices
                 nzcpl = np.argwhere( cpl != 0.).tolist() 
 
 
@@ -1244,14 +1266,16 @@ class Bspline :
                     
                     #right.clear_cp()
                     right.set_cp(c,1.0)
-                    dr = right.derivative()[k] if self.dim() > 1 else right.derivative()
+                    # ho modificato gli input della funzione derivative
+                    #dr = right.derivative()[k] if self.dim() > 1 else right.derivative()
+                    dr = right.derivative(k) #if self.dim() > 1 else right.derivative()
                     #cancello, tanto non mi serve valutarla
                     #mi servono soltanto i coefficienti della derivata
                     right.set_cp(c,0.0)
 
                     #control points, modifico il tipo e cerco quelli non nulli
                     cpr = dr._cp.astype(float)
-                    #non zero control points (right) indices
+                    # nzcpr : non zero control points (right) indices
                     nzcpr = np.argwhere( cpr != 0.).tolist() 
 
                     #attenzione all'ordine
