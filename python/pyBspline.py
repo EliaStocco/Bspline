@@ -892,7 +892,7 @@ class Bspline :
     ###
     def approximate(self,func,opts=None):
         #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
-        opts = self.prepare_opts(opts,opts2={"norm":"L1"})
+        opts = self.prepare_opts(opts)
 
         om = self.overlap_matrix(opts)
         lv = self.load_vector(func,opts)
@@ -1398,7 +1398,8 @@ class Bspline :
             ov = self.basis_overlap(i,i,br) #overlap
             
             # ho messo endpoint = True
-            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=True),0)                  for k in range(0,self.dim()) ]
+            #rimetto endpoint = False
+            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
             area = 1
             for k in range(0,self.dim()):
                 area = area * ( ov[k][1] - ov[k][0] )
