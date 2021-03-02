@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[21]:
+# In[4]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[22]:
+# In[5]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[23]:
+# In[6]:
 
 
 import numpy as np
@@ -106,7 +106,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[24]:
+# In[7]:
 
 
 import copy
@@ -778,14 +778,14 @@ class Bspline :
         left.clear_cp()
         right.clear_cp()
 
-        #adjacency matrix delle derivate
+        #adjacency matrix
         am = self.adjacency_matrix()
 
         smd1D = am.copy()    
         smd1D[ smd1D == False ] = 0.0 #np.nan
         smd1D[ smd1D == True ] = 0.0 #np.nan
 
-        #calcolo il prodotto scalare dei gradiente
+        #calcolo il prodotto scalare dei gradienti
         n = am.shape[0]
         for i in range(0,n):
             r = am.index[i] 
@@ -824,11 +824,12 @@ class Bspline :
 
                 y = integrate (Xintegration)
                 #print(y)
-                if opts["norm"] == "L1" :
-                    res = np.mean(y)*area
-                elif opts["norm"] == "L2" :
-                    print("L2 norm")
-                    res = None #np.sqrt(np.mean(y))*area
+                #uso sempre L1
+                #if opts["norm"] == "L1" :
+                res = np.mean(y)*area
+                #elif opts["norm"] == "L2" :
+                #print("L2 norm")
+                #res = None #np.sqrt(np.mean(y))*area
 
                 #res = integrate.nquad( integral , ov , opts = opts)[0] #solo risultato
                 if opts["print"] == True : endt = time.time()
@@ -1184,25 +1185,25 @@ class Bspline :
         # considero le derivate parziali lungo solo un asse
         sm1D = pd.DataFrame(0.0,index=am.index,columns=am.columns)
         n = sm1D.shape[0]#quadrata
-        
+
         # escludo subito dal calcolo i termini di bordo 
         # impostando a nan il valore in sm1D
         # edge : questo non dovrebbe servire più
         #edge = self.edge()
-                
-        
+
+
         #sm1D = am.copy()    
         #sm1D[ sm1D == False ] = 0.0 #None
 
         #stiffness matrix: sum over all dimensione
         #matrice stiffness finale, è la somma della matrici parziali (su una sola dimensione)
         #questa è in realtà una lista contenente le matrici parziali
-        
+
         # sm : stiffness matrix
         # lista che contiene tutte le sm1D
         sm = list()
 
-        
+
 
         # creo due copie della Bspline
         left  = self.copy()
@@ -1220,13 +1221,13 @@ class Bspline :
 
                 #indice della funzione di base di sinista (r=righe)
                 r = am.index[i] 
-                
+
                 #controllo che il termine non sia di bordo
                 #if edge.at[r,"edge"] == True :
                 #    sm1D.at[r,:] = np.nan
                 #    sm1D.at[:,r] = np.nan
                 #    continue
-                    
+
                 #left.clear_cp()
                 left.set_cp(r,1.0)
                 # calcolo la derivata della funzione di base di sinistra
@@ -1234,7 +1235,7 @@ class Bspline :
                 # ho modificato gli input della funzione derivative
                 #dl = left.derivative()[k] if self.dim() > 1 else left.derivative()
                 dl = left.derivative(axis=k) #if self.dim() > 1 else left.derivative()
-                
+
                 #cancello, tanto non mi serve valutarla
                 #mi servono soltanto i coefficienti della derivata
                 left.set_cp(r,0.0)
@@ -1242,12 +1243,16 @@ class Bspline :
 
                 # ATTENZIONE :
                 # qui inizia l'algoritmo vero e proprio
-                
-                
+
+
                 #control points, modifico il tipo e cerco quelli non nulli
-                cpl = dl._cp.astype(float) 
+                #cpl = dl._cp.astype(float) 
                 # nzcpl : non zero control points (left) indices
-                nzcpl = np.argwhere( cpl != 0.).tolist() 
+                #nzcpl = np.argwhere( cpl != 0.).tolist() 
+
+                cpl = dl.control_points()
+                cpl.columns = ["value"]
+                nzcpl = cpl[ cpl["value"] !=0. ]
 
 
                 #ciclo su tutte le altre funzioni di base
@@ -1256,14 +1261,14 @@ class Bspline :
 
                     #indice della funzione di base di destra (c=colonne)
                     c = am.columns[j]   
-                    
+
                     #controllo che il termine non sia di bordo
                     #if edge.at[c,"edge"] == True :
                     #    sm1D.at[c,:] = np.nan
                     #    sm1D.at[:,c] = np.nan
                     #    continue
-                    
-                    
+
+
                     #right.clear_cp()
                     right.set_cp(c,1.0)
                     # ho modificato gli input della funzione derivative
@@ -1274,28 +1279,43 @@ class Bspline :
                     right.set_cp(c,0.0)
 
                     #control points, modifico il tipo e cerco quelli non nulli
-                    cpr = dr._cp.astype(float)
+                    #cpr = dr._cp.astype(float)
                     # nzcpr : non zero control points (right) indices
-                    nzcpr = np.argwhere( cpr != 0.).tolist() 
+                    #nzcpr = np.argwhere( cpr != 0.).tolist() 
+
+                    cpr = dr.control_points()
+                    cpr.columns = ["value"]
+                    nzcpr = cpr[ cpr["value"] !=0. ]
 
                     #attenzione all'ordine
                     #genero tutte le coppie
-                    allpairs = list(itertools.product(nzcpl,nzcpr))
+                    #allpairs = list(itertools.product(nzcpl,nzcpr))
                     if opts["print"] == True : print(r,"-",c)
                     if opts["print"] == True : print(cpl,"->",nzcpl)
                     if opts["print"] == True : print(cpr,"->",nzcpr)
 
-                    sm1D.at[r,c] = 0.0         
-                    for w in range(0,len(allpairs)):
-                        li = tuple(allpairs[w][0])
-                        ri = tuple(allpairs[w][1])
-                        ll = cpl[li]
-                        rr = cpr[ri]                
-                        #if ll != 0.0 and rr != 0.0 :                    
-                        dd = omd[k].at[li,ri]
-                        if opts["print"] == True : print("sum : ",ll," | ",rr,"|",dd)
-                        #if dd is None : dd = 0.0
-                        sm1D.at[r,c] = sm1D.at[r,c] + ll*rr*dd
+                    for rr in nzcpr.index:
+                        #right value
+                        rv = cpr.at[rr,"value"] 
+                        for ll in nzcpl.index:
+                            #left value
+                            lv = cpl.at[ll,"value"]  
+                            #derivative value
+                            dv = omd[k].at[ll,rr]
+                            #
+                            sm1D.at[r,c] = sm1D.at[r,c] + lv*rv*dv
+
+                    #sm1D.at[r,c] = 0.0         
+                    #for w in range(0,len(allpairs)):
+                    #    li = tuple(allpairs[w][0])
+                    #    ri = tuple(allpairs[w][1])
+                    #    ll = cpl[li]
+                    #    rr = cpr[ri]                
+                    #    #if ll != 0.0 and rr != 0.0 :                    
+                    #    dd = omd[k].at[li,ri]
+                    #   if opts["print"] == True : print("sum : ",ll," | ",rr,"|",dd)
+                    #    #if dd is None : dd = 0.0
+                    #    sm1D.at[r,c] = sm1D.at[r,c] + ll*rr*dd
 
                     sm1D.at[c,r] = sm1D.at[r,c]
                     if opts["print"] == True : print("\n")
@@ -1361,6 +1381,8 @@ class Bspline :
             integrate = integrate_1D
         else :
             integrate = integrate_ND
+            print("codim > 1: Galerkin method is not defined")
+            raise Exception()
         #integrate = lambda *xx : 
 
 
@@ -1374,8 +1396,9 @@ class Bspline :
             #i = tuple(i)
             scalar.set_cp(i,1.0)
             ov = self.basis_overlap(i,i,br) #overlap
-
-            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
+            
+            # ho messo endpoint = True
+            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=True),0)                  for k in range(0,self.dim()) ]
             area = 1
             for k in range(0,self.dim()):
                 area = area * ( ov[k][1] - ov[k][0] )
