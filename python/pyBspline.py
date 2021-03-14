@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[4]:
+# In[5]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[5]:
+# In[2]:
 
 
 class shape :
@@ -36,12 +36,12 @@ class shape :
 
 # ## Knot vector class
 
-# In[6]:
+# In[3]:
 
 
 import numpy as np
 
-class knot_vector ():
+class knot_vector:
     
     #_pol_order  = 0 #grado polinomiale
     #_basis_card = 0 #cardinalità della base 
@@ -106,14 +106,18 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[7]:
+# In[4]:
 
 
 import copy
 import pandas as pd
-from scipy import integrate
-import itertools 
+#from scipy import integrate
+#import itertools 
 import time
+#import pickle as pk
+#import jsonpickle
+#import json
+import pickle
 
 class Bspline :
     
@@ -1398,7 +1402,8 @@ class Bspline :
             ov = self.basis_overlap(i,i,br) #overlap
             
             # ho messo endpoint = True
-            #rimetto endpoint = False
+            # rimetto endpoint = False
+            # tenere assolutamente endpoint = False
             X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
             area = 1
             for k in range(0,self.dim()):
@@ -1428,6 +1433,37 @@ class Bspline :
         #    out = out.drop(edge.index[ edge["edge"] == True ])  
             
         return out       
+    
+    ###
+    def save(self,filename,mode="b"):
+        
+        if mode == "b" :
+            pickle.dump( self, open( filename, "wb" ) )
+
+
+        #frozen = jsonpickle.encode(self)
+        #data = json.dumps(frozen, sort_keys=True, indent=4)
+        #with open(filename, 'w') as outfile:
+        #    json.dump(data, outfile)
+            
+        #return True
+            
+    ###
+    def load(self,filename,mode="b"):
+        
+        if mode == "b" :
+            self = pickle.load( open( filename, "rb" ) )
+        
+        #with open(filename,'r') as infile:
+        #data = json.load(infile)
+            
+        #self = jsonpickle.decode(data)
+        #return True
+        
+    def load_sm(self,filename):
+        sm=pd.read_csv(filename,index_col=0)
+        self._stiffness_matrix = sm
+        self._ready_sm = True
     
 ###        
 def overlaps(a, b):
