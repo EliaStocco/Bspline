@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[18]:
+# In[22]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -209,10 +209,10 @@ class Bspline :
         #
         self._stiffness_matrix = None
         self._overlap_matrix = None
-        self._load_vector = None
+        #self._load_vector = None
         self._ready_sm = False #stiffness matrix
         self._ready_om = False #overlap matrix
-        self._ready_lv = False #load vector
+        #self._ready_lv = False #load vector
         
         self._trace_Bspline = [ 0 for i in range(self.dim())]
         self._ready_trace = [ False for i in range(self.dim())]
@@ -273,7 +273,7 @@ class Bspline :
         #    return False
         self_ready_sm = False
         self_ready_om = False
-        self_ready_lv = False
+        #self_ready_lv = False
         return True                                     
     ### some function returing some variables, not very usefull...
     def knots_vectors(self): return self._kv.copy()
@@ -297,7 +297,7 @@ class Bspline :
         self._cp = np.zeros(self._cp.shape)
         self_ready_sm = False
         self_ready_om = False
-        self_ready_lv = False
+        #self_ready_lv = False
     ###
     def show(self,what="all"):
         
@@ -877,8 +877,8 @@ class Bspline :
             opts["ready_om"] = True
         if "ready_sm" not in opts :
             opts["ready_sm"] = True
-        if "ready_lv" not in opts :
-            opts["ready_lv"] = False
+        #if "ready_lv" not in opts :
+        #    opts["ready_lv"] = False
         if "ready_trace" not in opts :
             opts["ready_trace"] = [ False for i in range(self.dim())]
         
@@ -889,7 +889,7 @@ class Bspline :
         il = self.index_list()
         df = pd.DataFrame( il , index = tuple(il) ,columns = np.arange(0,self.dim()) )
         df["edge"] = True
-        df["corner"] = True
+        #df["corner"] = True
         allx = np.arange(0,self.dim())
         e = np.zeros(self.dim())
         for i in range(0,df.shape[0]):
@@ -898,7 +898,7 @@ class Bspline :
                 e[k] = df.iloc[i,k] <= 0 or df.iloc[i,k] >= kv.n()-1
                 #e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
             df.at[df.index[i],"edge"] = np.any(e)
-            df.at[df.index[i],"corner"] = np.all(e)
+            #df.at[df.index[i],"corner"] = np.all(e)
         df.drop(columns=allx,inplace=True)
         return df       
     
@@ -1349,11 +1349,11 @@ class Bspline :
         opts = self.prepare_opts(opts)
         
         # controllo se ho già calcolato la matrici di stiffness
-        if opts["ready_lv"] == False:
-            self._ready_lv = False
+        #if opts["ready_lv"] == False:
+        #    self._ready_lv = False
             
-        if self._ready_lv == True :
-            return self._load_vector
+        #if self._ready_lv == True :
+        #    return self._load_vector
 
         # escludo subito dal calcolo i termini di bordo 
         #impostando a nan il valore in sm1D
@@ -1401,8 +1401,8 @@ class Bspline :
             integrate = integrate_1D
         else :
             integrate = integrate_ND
-            print("codim > 1: Galerkin method is not defined")
-            raise Exception()
+            #print("codim > 1: Galerkin method is not defined")
+            #raise Exception()
         #integrate = lambda *xx : 
 
 
@@ -1448,8 +1448,8 @@ class Bspline :
         #if opts["del-edge"] == True:
         #    out = out.drop(edge.index[ edge["edge"] == True ])  
             
-        self._load_vector = out.copy()
-        self._ready_lv = True
+        #self._load_vector = out.copy()
+        #self._ready_lv = True
         return out       
     
     
@@ -1504,107 +1504,6 @@ def overlaps(a, b):
     else :
         return c
 
-
-#  opts = self.prepare_opts(opts)
-# 
-#         om = self.overlap_matrix(opts)
-#         lv = self.load_vector(func,opts)
-# 
-#         om.replace(np.nan,0.0,inplace=True)
-#         omnp = np.asarray(om)
-# 
-#         if self.codim() == 1 :
-# 
-#             lv.replace(np.nan,0.0,inplace=True)
-# 
-#             lvnp = np.asarray(lv)
-# 
-#             cp  = np.linalg.solve(omnp,lvnp)
-#             out = pd.DataFrame(cp,index=om.index,columns=["cp"])
-# 
-#             for i in range(len(cp)):
-#                 j = out.index[i]
-#                 self._cp[j]  = out.at[j,"cp"]
-# 
-#         else :
-# 
-#             lv2 = pd.DataFrame(columns=np.arange(0,self.codim()),index=lv.index)
-#             for k in range(self.codim()):
-#                 for i in lv2.index :
-#                     lv2.at[i,k] =lv.at[i,"cp"][k]
-#             lv2.replace(np.nan,0.0,inplace=True)
-# 
-#             out = pd.DataFrame(index=om.index,columns=np.arange(0,self.codim()))
-# 
-#             for k in range(self.codim()):
-# 
-#                 lvnp = np.asarray(lv2[k])
-#                 cp  = np.linalg.solve(omnp,lvnp)
-# 
-#                 out[k] = cp
-# 
-#             for i in range(len(cp)):
-#                 j = out.index[i]
-#                 self.set_cp(j, out.iloc[i])
-#         if self.codim() == 1 :
-#             self._cp = self._cp.astype(float)
-
-#             
-#         
-#         
-#     ###
-#     #def save_sm(self,filename):
-#     #    self._stiffness_matrix.to_csv(filename,index_label="index")
-#         
-#     ###
-#     #def save_lv(self,filename):
-#     #    self._load_vector.to_csv(filename,index_label="index")
-#         
-#     ###
-#     #def save_cp(self,filename):
-#     #    self._cp.to_csv(filename,index_label="index")
-#         
-#     ###
-#     def load_sm(self,filename):
-#         #sm=pd.read_csv(filename,index_col=0)
-#         #self._stiffness_matrix = sm
-#         #self._ready_sm = True
-#         
-#         sm = pd.read_csv(filename)
-#         sm.index = [tuple_from_str(i) for i in sm.iloc[:,0]]
-#         sm = sm.drop('index',axis=1)
-#         sm.columns = [tuple_from_str(i) for i in sm.columns]
-#         
-#         self._stiffness_matrix = sm.copy()
-#         self._ready_sm = True
-#         
-#     
-#     ###
-#     def load_lv(self,filename):
-#         #sm=pd.read_csv(filename,index_col=0)
-#         #self._stiffness_matrix = sm
-#         #self._ready_sm = True
-#         
-#         lv = pd.read_csv(filename)
-#         lv.index = [tuple_from_str(i) for i in sm.iloc[:,0]]
-#         lv = sm.drop('index',axis=1)
-#         lv.columns = [tuple_from_str(i) for i in sm.columns]
-#         
-#         self._load_vector = lv.copy()
-#         self._ready_lv = True
-#         
-#     ###
-#     def load_cp(self,filename):
-#         #sm=pd.read_csv(filename,index_col=0)
-#         #self._stiffness_matrix = sm
-#         #self._ready_sm = True
-#         
-#         cp = pd.read_csv(filename)
-#         cp.index = [tuple_from_str(i) for i in sm.iloc[:,0]]
-#         cp = sm.drop('index',axis=1)
-#         cp.columns = [tuple_from_str(i) for i in sm.columns]
-#         
-#         self._cp = cp.copy()
 
 # 
 #         #edge
