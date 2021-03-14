@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[5]:
+# In[18]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[2]:
+# In[15]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[3]:
+# In[16]:
 
 
 import numpy as np
@@ -106,7 +106,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[4]:
+# In[17]:
 
 
 import copy
@@ -118,6 +118,7 @@ import time
 #import jsonpickle
 #import json
 import pickle
+import re
 
 class Bspline :
     
@@ -208,8 +209,10 @@ class Bspline :
         #
         self._stiffness_matrix = None
         self._overlap_matrix = None
+        self._load_vector = None
         self._ready_sm = False #stiffness matrix
         self._ready_om = False #overlap matrix
+        self._ready_lv = False #load vector
         
         self._trace_Bspline = [ 0 for i in range(self.dim())]
         self._ready_trace = [ False for i in range(self.dim())]
@@ -270,6 +273,7 @@ class Bspline :
         #    return False
         self_ready_sm = False
         self_ready_om = False
+        self_ready_lv = False
         return True                                     
     ### some function returing some variables, not very usefull...
     def knots_vectors(self): return self._kv.copy()
@@ -293,6 +297,7 @@ class Bspline :
         self._cp = np.zeros(self._cp.shape)
         self_ready_sm = False
         self_ready_om = False
+        self_ready_lv = False
     ###
     def show(self,what="all"):
         
@@ -872,6 +877,8 @@ class Bspline :
             opts["ready_om"] = True
         if "ready_sm" not in opts :
             opts["ready_sm"] = True
+        if "ready_lv" not in opts :
+            opts["ready_lv"] = False
         if "ready_trace" not in opts :
             opts["ready_trace"] = [ False for i in range(self.dim())]
         
@@ -882,6 +889,7 @@ class Bspline :
         il = self.index_list()
         df = pd.DataFrame( il , index = tuple(il) ,columns = np.arange(0,self.dim()) )
         df["edge"] = True
+        df["corner"] = True
         allx = np.arange(0,self.dim())
         e = np.zeros(self.dim())
         for i in range(0,df.shape[0]):
@@ -890,8 +898,9 @@ class Bspline :
                 e[k] = df.iloc[i,k] <= 0 or df.iloc[i,k] >= kv.n()-1
                 #e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
             df.at[df.index[i],"edge"] = np.any(e)
+            df.at[df.index[i],"corner"] = np.all(e)
         df.drop(columns=allx,inplace=True)
-        return df
+        return df       
     
     ###
     def approximate(self,func,opts=None):
@@ -939,7 +948,7 @@ class Bspline :
                 self.set_cp(j, out.iloc[i])
         if self.codim() == 1 :
             self._cp = self._cp.astype(float)
-        return out       
+        return out  
        
     ###
     def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
@@ -1338,6 +1347,13 @@ class Bspline :
     def load_vector(self,func,opts=None): 
         
         opts = self.prepare_opts(opts)
+        
+        # controllo se ho già calcolato la matrici di stiffness
+        if opts["ready_lv"] == False:
+            self._ready_lv = False
+            
+        if self._ready_lv == True :
+            return self._load_vector
 
         # escludo subito dal calcolo i termini di bordo 
         #impostando a nan il valore in sm1D
@@ -1432,38 +1448,52 @@ class Bspline :
         #if opts["del-edge"] == True:
         #    out = out.drop(edge.index[ edge["edge"] == True ])  
             
+        self._load_vector = out.copy()
+        self._ready_lv = True
         return out       
     
+    
     ###
-    def save(self,filename,mode="b"):
+    def save(self,variable,filename):
+        if variable == "sm":
+            var = self._stiffness_matrix
+        elif variable == "om":
+            var = self._overlap_matrix
+        elif variable == "lv":
+            var = self._load_vector
+        elif variable == "cp" :
+            var = self._cp
+        var.to_csv(filename,index_label="index")
         
-        if mode == "b" :
-            pickle.dump( self, open( filename, "wb" ) )
+    ###
+    def load(self,variable,filename):
+        
+        var = pd.read_csv(filename)
+        var.index = [tuple_from_str(i) for i in var.iloc[:,0]]
+        var = var.drop('index',axis=1)
+        
+        if variable == "sm":
+            var.columns = [tuple_from_str(i) for i in var.columns]
+            self._stiffness_matrix = var.copy()
+            self._ready_sm = True
+        elif variable == "om":
+            var.columns = [tuple_from_str(i) for i in var.columns]
+            self._overlap_matrix = var.copy()
+            self._ready_om = True
+        elif variable == "lv":
+            self._load_vector = var.copy()
+            self._ready_lv = True
+        elif variable == "cp" :
+            index = var.index
+            for i in index:
+                self._cp[i] = var.at[i,"cp"]
+            #self._cp = var.copy()
 
 
-        #frozen = jsonpickle.encode(self)
-        #data = json.dumps(frozen, sort_keys=True, indent=4)
-        #with open(filename, 'w') as outfile:
-        #    json.dump(data, outfile)
-            
-        #return True
-            
-    ###
-    def load(self,filename,mode="b"):
-        
-        if mode == "b" :
-            self = pickle.load( open( filename, "rb" ) )
-        
-        #with open(filename,'r') as infile:
-        #data = json.load(infile)
-            
-        #self = jsonpickle.decode(data)
-        #return True
-        
-    def load_sm(self,filename):
-        sm=pd.read_csv(filename,index_col=0)
-        self._stiffness_matrix = sm
-        self._ready_sm = True
+###
+def tuple_from_str(string):
+    return tuple(map(int, re.findall(r'[0-9]+', string)))
+
     
 ###        
 def overlaps(a, b):
@@ -1474,6 +1504,253 @@ def overlaps(a, b):
     else :
         return c
 
+
+#  opts = self.prepare_opts(opts)
+# 
+#         om = self.overlap_matrix(opts)
+#         lv = self.load_vector(func,opts)
+# 
+#         om.replace(np.nan,0.0,inplace=True)
+#         omnp = np.asarray(om)
+# 
+#         if self.codim() == 1 :
+# 
+#             lv.replace(np.nan,0.0,inplace=True)
+# 
+#             lvnp = np.asarray(lv)
+# 
+#             cp  = np.linalg.solve(omnp,lvnp)
+#             out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+# 
+#             for i in range(len(cp)):
+#                 j = out.index[i]
+#                 self._cp[j]  = out.at[j,"cp"]
+# 
+#         else :
+# 
+#             lv2 = pd.DataFrame(columns=np.arange(0,self.codim()),index=lv.index)
+#             for k in range(self.codim()):
+#                 for i in lv2.index :
+#                     lv2.at[i,k] =lv.at[i,"cp"][k]
+#             lv2.replace(np.nan,0.0,inplace=True)
+# 
+#             out = pd.DataFrame(index=om.index,columns=np.arange(0,self.codim()))
+# 
+#             for k in range(self.codim()):
+# 
+#                 lvnp = np.asarray(lv2[k])
+#                 cp  = np.linalg.solve(omnp,lvnp)
+# 
+#                 out[k] = cp
+# 
+#             for i in range(len(cp)):
+#                 j = out.index[i]
+#                 self.set_cp(j, out.iloc[i])
+#         if self.codim() == 1 :
+#             self._cp = self._cp.astype(float)
+
+#             
+#         
+#         
+#     ###
+#     #def save_sm(self,filename):
+#     #    self._stiffness_matrix.to_csv(filename,index_label="index")
+#         
+#     ###
+#     #def save_lv(self,filename):
+#     #    self._load_vector.to_csv(filename,index_label="index")
+#         
+#     ###
+#     #def save_cp(self,filename):
+#     #    self._cp.to_csv(filename,index_label="index")
+#         
+#     ###
+#     def load_sm(self,filename):
+#         #sm=pd.read_csv(filename,index_col=0)
+#         #self._stiffness_matrix = sm
+#         #self._ready_sm = True
+#         
+#         sm = pd.read_csv(filename)
+#         sm.index = [tuple_from_str(i) for i in sm.iloc[:,0]]
+#         sm = sm.drop('index',axis=1)
+#         sm.columns = [tuple_from_str(i) for i in sm.columns]
+#         
+#         self._stiffness_matrix = sm.copy()
+#         self._ready_sm = True
+#         
+#     
+#     ###
+#     def load_lv(self,filename):
+#         #sm=pd.read_csv(filename,index_col=0)
+#         #self._stiffness_matrix = sm
+#         #self._ready_sm = True
+#         
+#         lv = pd.read_csv(filename)
+#         lv.index = [tuple_from_str(i) for i in sm.iloc[:,0]]
+#         lv = sm.drop('index',axis=1)
+#         lv.columns = [tuple_from_str(i) for i in sm.columns]
+#         
+#         self._load_vector = lv.copy()
+#         self._ready_lv = True
+#         
+#     ###
+#     def load_cp(self,filename):
+#         #sm=pd.read_csv(filename,index_col=0)
+#         #self._stiffness_matrix = sm
+#         #self._ready_sm = True
+#         
+#         cp = pd.read_csv(filename)
+#         cp.index = [tuple_from_str(i) for i in sm.iloc[:,0]]
+#         cp = sm.drop('index',axis=1)
+#         cp.columns = [tuple_from_str(i) for i in sm.columns]
+#         
+#         self._cp = cp.copy()
+
+# 
+#         #edge
+#         edge = self.edge()
+# 
+#         #indici dei dof interni e di bordo
+#         index_int  = edge.index[ edge["corner"] == False ]
+#         index_edge = edge.index[ edge["corner"] == True  ]        
+#         
+#         #overlap matrix   
+#         om = self.overlap_matrix(opts)
+#         om.replace(np.nan,0.0,inplace=True)
+# 
+#         #degrees of freedem: internal
+#         dof_int = om.copy()
+#         dof_int.drop( index_edge ,inplace = True,axis=0)
+#         dof_int.drop( index_edge ,inplace = True,axis=1)
+# 
+#         #degrees of freedem: edge            
+#         dof_edge = om.copy()
+#         dof_edge.drop( index_edge ,inplace = True,axis=0)
+#         dof_edge.drop( index_int  ,inplace = True,axis=1)
+# 
+#         #convert into numpy array
+#         dinp = np.asarray(dof_int)
+#         denp = np.asarray(dof_edge)
+#         
+#         #load vector
+#         lv = self.load_vector(func,opts)
+#         lv.drop( index_edge  ,inplace = True) 
+#         lvnp = np.asarray(lv["cp"]).astype(float)
+# 
+#         #
+#         XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+#         for k in range(self.dim()):
+#             kv = self.knots_vectors()[k]
+#             nmax = kv.n()-1
+#             xmin = min(kv.knots())
+#             xmax = max(kv.knots())
+#             for i in index_edge:
+#                 if i[k] == nmax :
+#                     XY.at[i,k] = xmax
+#                 else :
+#                     XY.at[i,k] = xmin
+# 
+#         xy = np.asarray(XY).astype(float)
+# 
+#         gDnp = func(xy)
+# 
+#         #prodotto righe per colonne
+#         edlv = np.dot(denp,gDnp)
+# 
+#         cpint = np.linalg.solve(dinp,lvnp-edlv) 
+# 
+#         #out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+# 
+#         index = self.index_list()
+#         it = [ tuple(j) for j in index ]
+#         out = pd.DataFrame(index=it,columns=["cp"])
+# 
+#         for i in range(len(index_int)):
+#             j = index_int[i]
+#             self._cp[j] = cpint[i]
+#             out.iloc[out.index == j] = cpint[i]
+# 
+#         #assegno ai control points i valori calcolati
+#         #valori di bordo interpolanti
+#         for i in range(len(index_edge)):
+#             j = index_edge[i]
+#             self._cp[j] = gDnp[i]
+#             out.iloc[out.index == j] = gDnp[i]
+#            
+#         return out       
+#        
+
+# opts = self.prepare_opts(opts)        
+# 
+#         #edge
+#         edge = self.edge()
+# 
+#         #indici dei dof interni e di bordo
+#         index_int  = edge.index#[ edge["corner"] == False ]
+#         index_edge = []#edge.index[ edge["corner"] == True  ]        
+#         
+#         #overlap matrix   
+#         om = self.overlap_matrix(opts)
+#         om.replace(np.nan,0.0,inplace=True)
+# 
+#         #degrees of freedem: internal
+#         dof_int = om.copy()
+#         dof_int.drop( index_edge ,inplace = True,axis=0)
+#         dof_int.drop( index_edge ,inplace = True,axis=1)
+# 
+#         #degrees of freedem: edge            
+#         dof_edge = om.copy()
+#         dof_edge.drop( index_edge ,inplace = True,axis=0)
+#         dof_edge.drop( index_int  ,inplace = True,axis=1)
+# 
+#         #convert into numpy array
+#         dinp = np.asarray(dof_int)
+#         denp = np.asarray(dof_edge)
+#         
+#         #load vector
+#         lv = self.load_vector(func,opts)
+#         lv.drop( index_edge  ,inplace = True) 
+#         lvnp = np.asarray(lv["cp"]).astype(float)
+# 
+#         #
+#         XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+#         for k in range(self.dim()):
+#             kv = self.knots_vectors()[k]
+#             nmax = kv.n()-1
+#             xmin = min(kv.knots())
+#             xmax = max(kv.knots())
+#             for i in index_edge:
+#                 if i[k] == nmax :
+#                     XY.at[i,k] = xmax
+#                 else :
+#                     XY.at[i,k] = xmin
+# 
+#         xy = np.asarray(XY).astype(float)
+# 
+#         gDnp = func(xy)
+# 
+#         #prodotto righe per colonne
+#         edlv = np.dot(denp,gDnp)
+# 
+#         cpint = np.linalg.solve(dinp,lvnp-edlv) 
+# 
+#         #out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+# 
+#         index = self.index_list()
+#         it = [ tuple(j) for j in index ]
+#         out = pd.DataFrame(index=it,columns=["cp"])
+# 
+#         for i in range(len(index_int)):
+#             j = index_int[i]
+#             self._cp[j] = cpint[i]
+#             out.iloc[out.index == j] = cpint[i]
+# 
+#         #assegno ai control points i valori calcolati
+#         #valori di bordo interpolanti
+#         for i in range(len(index_edge)):
+#             j = index_edge[i]
+#             self._cp[j] = gDnp[i]
+#             out.iloc[out.index == j] = gDnp[i]
 
 # ### Derivative
 
@@ -1527,8 +1804,7 @@ def overlaps(a, b):
 # 
 # $ \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) = \mathbf{Q}_{i}\left(y\right) $
 
-# In[ ]:
+# ## Galerkin method
 
-
-
-
+# 
+# 
