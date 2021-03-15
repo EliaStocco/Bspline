@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[14]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -106,7 +106,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[7]:
+# In[3]:
 
 
 import copy
@@ -127,13 +127,14 @@ class Bspline :
                  sh    = shape(),
                  knots = np.zeros(shape=(0,1),dtype=object),
                  cp    = None ,
-                 prt   =  False
+                 prt   =  False,
+                 periodic = None
                 ):
         
         # making sure knots is a np.ndarray
         #knots = np.asarray([knots])
         # call init_knot
-        self  = self.init_knot(sh,knots)
+        self  = self.init_knot(sh,knots,periodic)
         
         # decido se stampare a schermo tutto 
         self._print = prt
@@ -151,11 +152,22 @@ class Bspline :
                 print ("Control points error : wrong dimensions")
                 raise Exception()        
     ### function called by __init__
-    def init_knot(self,sh,knots):
+    def init_knot(self,sh,knots,periodic):
         
         # assign value to class members
         #dim    = sh.dim()        
         self._sh = sh
+        
+        self._periodic = np.full(False,self.dim(),dtype=bool)
+        if periodic is None :
+            periodic = np.full(False,self.dim(),dtype=bool)
+        if self.dim() == 1:
+            self._periodic[0] = periodic
+        elif len(periodic) != self.dim():
+            print("Error : periodic array of wrong lenght")
+            raise Exception()  
+        else :
+            self._periodic = periodic
         
         #check dimension
         if len(knots) > sh.dim() :
@@ -241,42 +253,49 @@ class Bspline :
             if check == True :
                 print("error : Bspline.get")
             return self.Type_out()         
+    
+    ###
+    def is_periodic(self):
+        return np.any(self._periodic)
+    ###
+    def get_periodic_index(self,index):
+        out = self.Index_t()
+        for i in range(self.dim()):
+            j = index[i]
+            n = self._kv[i].n()-1
+            if j == 0 :
+                out[i] = n
+            elif j == n:
+                out[i] = 0 
+            else :
+                out[i] = j
+        return out
     ### set control point value/coordinates
     def set_cp (self,index,value,check=True) :
         
-        #if len(index) > 1 :
-        #   print("error : Bspline.set, pass only one control point")
-        #    raise Exception()
-        #    return False
-        
-        #value = np.asarray(value)        
-        #if len(value) == len(self._cp[index]) :
-        value = np.asarray(value)
-        value.reshape((self.codim(),1))
+        if self.codim() > 1 :
+            value = np.asarray(value)
+            value.reshape((self.codim(),1))
+            
         if self.dim() != 1 :
-            #print("convert to tuple:",type(index))
             ti = tuple(index)
-            #print("type(ti):",type(ti))
             self._cp[ti] = value
-            #print(self._cp)
+            if self.is_periodic():
+                tip = self.get_periodic_index(index)
+                self._cp[tip] = value
         else :
             self._cp[index] = value
-            #print("dim!=1")
-            #print("index=",index)
-            
-        #print("index=",index)
-        
-        #else :
-        #    if check == True :
-        #        print("error : Bspline.set")
-        #        raise Exception()
-        #    return False
+            if self.is_periodic():
+                tip = self.get_periodic_index(index)
+                self._cp[tip] = value
+                
         self_ready_sm = False
         self_ready_om = False
         #self_ready_lv = False
         return True                                     
     ### some function returing some variables, not very usefull...
-    def knots_vectors(self): return self._kv.copy()
+    def knots_vectors(self): 
+        return self._kv.copy()
     ###
     def get_knots_vector (self,index=None) :
         if index == None :        
@@ -479,7 +498,7 @@ class Bspline :
             if self.codim() == 1 :
                 out = out.reshape((len(out,)))
             return out
-    ###
+    ### da rivedere
     def derivative(self,axis=-1):        
         
         #http://public.vrac.iastate.edu/~oliver/courses/me625/week5b.pdf        
@@ -630,7 +649,7 @@ class Bspline :
             elif which == "int" :
                 return index[ edge["edge"] == False ]            
     
-    ###
+    ### da rivedere
     def basis_range(self):
             
         basis_range = list()#np.zeros(self.dim(),dtype=object)
@@ -677,7 +696,7 @@ class Bspline :
         
         return df #basis_range,df
     
-    ###
+    ### da rivedere
     def adjacency_matrix(self):
         
         #
@@ -716,7 +735,7 @@ class Bspline :
                 
         return am
     
-    ###
+    ### da rivedere
     def basis_max_min(self,r,br=None):
         
         if br is None :
@@ -728,7 +747,7 @@ class Bspline :
             
         return a
     
-    ###
+    ### da rivedere
     def basis_overlap(self,r,c,br=None):
         
         if br is None :
@@ -742,7 +761,7 @@ class Bspline :
             
         return o
     
-    ###
+    ### da rivedere
     def overlap_matrix(self,opts=None):
         
         opts = self.prepare_opts(opts)
@@ -877,6 +896,8 @@ class Bspline :
             opts["ready_om"] = True
         if "ready_sm" not in opts :
             opts["ready_sm"] = True
+        if "interpolation" not in opts:
+            opts["interpolation"] = True
         #if "ready_lv" not in opts :
         #    opts["ready_lv"] = False
         if "ready_trace" not in opts :
@@ -884,7 +905,7 @@ class Bspline :
         
         return opts
     
-    ###
+    ### da rivedere
     def edge(self):
         il = self.index_list()
         df = pd.DataFrame( il , index = tuple(il) ,columns = np.arange(0,self.dim()) )
@@ -902,7 +923,7 @@ class Bspline :
         df.drop(columns=allx,inplace=True)
         return df       
     
-    ###
+    ### da rivedere
     def approximate(self,func,opts=None):
         #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
         
@@ -915,65 +936,55 @@ class Bspline :
         #edge
         edge = self.edge()
 
-        #indici dei dof interni e di bordo
-        index_int  = edge.index[ edge["corner"] == False ]
-        index_edge = edge.index[ edge["corner"] == True  ]        
-
         #overlap matrix   
         om = self.overlap_matrix(opts)
         om.replace(np.nan,0.0,inplace=True)
 
-        #degrees of freedem: internal
-        dof_int = om.copy()
-        dof_int.drop( index_edge ,inplace = True,axis=0)
-        dof_int.drop( index_edge ,inplace = True,axis=1)
+        if self.dim() > 1 :
 
-        #degrees of freedem: edge            
-        dof_edge = om.copy()
-        dof_edge.drop( index_edge ,inplace = True,axis=0)
-        dof_edge.drop( index_int  ,inplace = True,axis=1)
+            #indici dei dof interni e di bordo
+            index_int  = edge.index[ edge["edge"] == False ]
+            index_edge = edge.index[ edge["edge"] == True  ]
 
-        #convert into numpy array
-        dinp = np.asarray(dof_int)
-        denp = np.asarray(dof_edge)
+            #degrees of freedem: internal
+            dof_int = om.copy()
+            dof_int.drop( index_edge ,inplace = True,axis=0)
+            dof_int.drop( index_edge ,inplace = True,axis=1)
 
-        #load vector
-        lv = self.load_vector(func,opts)
-        lv.drop( index_edge  ,inplace = True) 
+            #degrees of freedem: edge
+            dof_edge = om.copy()
+            dof_edge.drop( index_edge ,inplace = True,axis=0)
+            dof_edge.drop( index_int  ,inplace = True,axis=1)
 
+            #load vector
+            lv = self.load_vector(func,opts)        
+            lv.replace(np.nan,0.0,inplace=True)
+            lv.drop( index_edge  ,inplace = True)  
 
-        #
-        XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
-        for k in range(self.dim()):
-            kv = self.knots_vectors()[k]
-            nmax = kv.n()-1
-            xmin = min(kv.knots())
-            xmax = max(kv.knots())
-            for i in index_edge:
-                if i[k] == nmax :
-                    XY.at[i,k] = xmax
-                else :
-                    XY.at[i,k] = xmin
+            #convert into numpy array
+            dinp = np.asarray(dof_int)
+            denp = np.asarray(dof_edge)
+            #
+            #if gD is None :
+            #    gD = lambda xx : np.zeros(shape=(len(xx),self.codim()))
 
-        xy = np.asarray(XY).astype(float)
-        if self.dim() == 1 :
-            xy = xy.reshape((len(xy),))
+            #
+            gDv = self.Dirichlet_BC(func,opts)
 
-        #
-        gDnp = func(xy)#.astype(float)
-
-        if False == True : #self.codim() == 1 :
-
+            #load vector
+            lvnp = np.asarray(lv)
+            #punti di bordo
+            gDnp = np.asarray(gDv,dtype=float)
             #prodotto righe per colonne
             edlv = np.dot(denp,gDnp)
 
-            lvnp = np.asarray(lv["cp"]).astype(float)
-
-            gDnp = gDnp.reshape((len(gDnp),))
-            edlv = edlv.reshape((len(edlv),))
-
-            #
+            #solve linear system
             cpint = np.linalg.solve(dinp,lvnp-edlv) 
+
+            #preparo gli indice della variabile di output
+            index = self.index_list()
+            it = [ tuple(j) for j in index ]
+            #out = pd.DataFrame(index=it,columns=["cp"])
 
             #assegno ai control points i valori calcolati
             #valori interni
@@ -989,8 +1000,59 @@ class Bspline :
                 self._cp[j] = gDnp[i]
                 #out.iloc[out.index == j] = gDnp[i]
 
-        else :
 
+        else :                
+
+            if opts["interpolation"] == True :
+            #indici dei dof interni e di bordo
+                index_int  = edge.index[ edge["corner"] == False ]
+                index_edge = edge.index[ edge["corner"] == True  ]
+            else :
+                index_int  = edge.index#[ edge["corner"] == False ]
+                index_edge = []#edge.index[ edge["corner"] == True  ]
+
+            #degrees of freedem: internal
+            dof_int = om.copy()
+            dof_int.drop( index_edge ,inplace = True,axis=0)
+            dof_int.drop( index_edge ,inplace = True,axis=1)
+
+            #degrees of freedem: edge            
+            dof_edge = om.copy()
+            dof_edge.drop( index_edge ,inplace = True,axis=0)
+            dof_edge.drop( index_int  ,inplace = True,axis=1)
+
+            #convert into numpy array
+            dinp = np.asarray(dof_int)
+            denp = np.asarray(dof_edge)
+
+            #load vector: dof interni
+            #print("load vector")
+            lv = self.load_vector(func,opts)
+            lv.drop( index_edge  ,inplace = True) 
+
+
+            #
+            XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+            for k in range(self.dim()):
+                kv = self.knots_vectors()[k]
+                nmax = kv.n()-1
+                xmin = min(kv.knots())
+                xmax = max(kv.knots())
+                for i in index_edge:
+                    if i[k] == nmax :
+                        XY.at[i,k] = xmax
+                    else :
+                        XY.at[i,k] = xmin
+
+            xy = np.asarray(XY).astype(float)
+            #if self.dim() == 1 :
+            #    xy = xy.reshape((len(xy),))
+
+            #dof di bordo
+            #print("gDnp")
+            gDnp = func(xy)#.astype(float)
+
+            ###        
             #print("ciao")
             lvnpND = np.asarray(lv["cp"])#.astype(float)
             lvnpND = np.zeros(shape=(len(lv),self.codim()))
@@ -1049,7 +1111,7 @@ class Bspline :
     def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
         sh = shape(dim=self.dim(),codim=1)
         kv = self._kv        
-        return Bspline(sh,kv)#cp: default value
+        return Bspline(sh,kv,periodic=self._periodic)#cp: default value
     
     ###
     def get_gD_shape(self):
@@ -1058,44 +1120,7 @@ class Bspline :
         columns = ["Dirichlet"]
         return pd.DataFrame(data=np.full(len(it),0),index=it,columns=columns)
         
-    ###
-    def _get_xint(self):
-        
-        # restituisce i punti di bordo interpolatori
-        
-        #index list
-        index_list = self.index_list("edge")
-        il = pd.DataFrame(index_list)
-        #index list (tuple)
-        it =  [ tuple(i) for i in index_list ]
-
-        #xmin xmax
-        xmin_vect = [ self._kv[i].xmin() for i in range(self.dim()) ]
-        xmax_vect = [ self._kv[i].xmax() for i in range(self.dim()) ]
-
-        # x interpolatorio
-        xint = pd.DataFrame(np.zeros(shape=(len(il),self.dim())),index = it)
-
-        #percorro la matrice "il" dall'alto verso il basso, una colonna alla volta
-        for k in range(self.dim()): #ciclo sulle dimensioni/componenti dei punti : COLONNE
-            n = self._kv[k].n()
-            xmin = xmin_vect[k]
-            xmax = xmax_vect[k]
-            knot0 = self.get_knots_vector(k).knots()
-            p = self.get_knots_vector(k).p()
-            n = self.get_knots_vector(k).n()
-            knot  = knot0[p:n+1]
-            for i in range(len(il)) : #ciclo sui punti di bordo : RIGHE
-                if il.at[i,k] == 0 :
-                    xint.iloc[i,k] = xmin
-                elif il.at[i,k] == n-1 :
-                    xint.iloc[i,k] = xmax
-                else :
-                    xint.iloc[i,k] = knot[xint.index[i][k]]#knot[k]
-                    
-        return xint
-    
-    ###
+    ### da rivedere
     def trace(self,n,opts=None):
         
         
@@ -1122,9 +1147,8 @@ class Bspline :
         self._trace_Bspline[n] = curve.copy()
         
         return curve
-        
-    
-    ### 
+            
+    ### da rivedere
     def Dirichlet_BC(self,gD,opts):
         
         # to_approx: 
@@ -1169,17 +1193,8 @@ class Bspline :
         ii = self.index_list("edge")
         it = [ tuple(i) for i in ii ]
         return cp.loc[it]
-
-        #xint = self._get_xint()        
-        # convert into numpy array
-        #xintnp = np.array(xint)        
-        # calcolo gD nei punti interpolatori
-        #yintnp = gD(xint)        
-        #converto in DataFrame
-        #yint = pd.DataFrame(yintnp,index=xint.index)        
-        #return yint
-        
-    ###
+       
+    ### da rivedere
     def Galerkin(self,f,gD=None,opts=None):
         
         #               u = unknown function
@@ -1263,7 +1278,7 @@ class Bspline :
             self._cp = self._cp.astype(float)
         return out      
     
-    ###
+    ### da rivedere
     def stiffness_matrix(self,opts=None):
         
         opts = self.prepare_opts(opts)
@@ -1438,7 +1453,7 @@ class Bspline :
         self._ready_sm = True
         return out
      
-    ###
+    ### da rivedere
     def load_vector(self,func,opts=None): 
         
         opts = self.prepare_opts(opts)
@@ -1557,7 +1572,7 @@ class Bspline :
         elif variable == "lv":
             var = self._load_vector
         elif variable == "cp" :
-            var = self._cp
+            var = self.control_points()
         var.to_csv(filename,index_label="index")
         
     ###
@@ -1579,9 +1594,11 @@ class Bspline :
             self._load_vector = var.copy()
             self._ready_lv = True
         elif variable == "cp" :
+            var.columns = [ int(i) for i in var.columns ]
             index = var.index
             for i in index:
-                self._cp[i] = var.at[i,"cp"]
+                for k in range(self.codim()):
+                    self._cp[i,k] = var.at[i,k]
             #self._cp = var.copy()
 
 
