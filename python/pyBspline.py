@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[24]:
+# In[11]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -106,7 +106,7 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[17]:
+# In[7]:
 
 
 import copy
@@ -889,7 +889,7 @@ class Bspline :
         il = self.index_list()
         df = pd.DataFrame( il , index = tuple(il) ,columns = np.arange(0,self.dim()) )
         df["edge"] = True
-        #df["corner"] = True
+        df["corner"] = True
         allx = np.arange(0,self.dim())
         e = np.zeros(self.dim())
         for i in range(0,df.shape[0]):
@@ -898,58 +898,138 @@ class Bspline :
                 e[k] = df.iloc[i,k] <= 0 or df.iloc[i,k] >= kv.n()-1
                 #e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
             df.at[df.index[i],"edge"] = np.any(e)
-            #df.at[df.index[i],"corner"] = np.all(e)
+            df.at[df.index[i],"corner"] = np.all(e)
         df.drop(columns=allx,inplace=True)
         return df       
     
     ###
     def approximate(self,func,opts=None):
         #http://hplgit.github.io/INF5620/doc/pub/sphinx-fem/._main_fem002.html
+        
         opts = self.prepare_opts(opts)
 
+        #
+        index = self.index_list()
+        it = [ tuple(j) for j in index ]        
+
+        #edge
+        edge = self.edge()
+
+        #indici dei dof interni e di bordo
+        index_int  = edge.index[ edge["corner"] == False ]
+        index_edge = edge.index[ edge["corner"] == True  ]        
+
+        #overlap matrix   
         om = self.overlap_matrix(opts)
-        lv = self.load_vector(func,opts)
-
         om.replace(np.nan,0.0,inplace=True)
-        omnp = np.asarray(om)
 
-        if self.codim() == 1 :
+        #degrees of freedem: internal
+        dof_int = om.copy()
+        dof_int.drop( index_edge ,inplace = True,axis=0)
+        dof_int.drop( index_edge ,inplace = True,axis=1)
 
-            lv.replace(np.nan,0.0,inplace=True)
+        #degrees of freedem: edge            
+        dof_edge = om.copy()
+        dof_edge.drop( index_edge ,inplace = True,axis=0)
+        dof_edge.drop( index_int  ,inplace = True,axis=1)
 
-            lvnp = np.asarray(lv)
+        #convert into numpy array
+        dinp = np.asarray(dof_int)
+        denp = np.asarray(dof_edge)
 
-            cp  = np.linalg.solve(omnp,lvnp)
-            out = pd.DataFrame(cp,index=om.index,columns=["cp"])
+        #load vector
+        lv = self.load_vector(func,opts)
+        lv.drop( index_edge  ,inplace = True) 
 
-            for i in range(len(cp)):
-                j = out.index[i]
-                self._cp[j]  = out.at[j,"cp"]
+
+        #
+        XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+        for k in range(self.dim()):
+            kv = self.knots_vectors()[k]
+            nmax = kv.n()-1
+            xmin = min(kv.knots())
+            xmax = max(kv.knots())
+            for i in index_edge:
+                if i[k] == nmax :
+                    XY.at[i,k] = xmax
+                else :
+                    XY.at[i,k] = xmin
+
+        xy = np.asarray(XY).astype(float)
+
+        #
+        gDnp = func(xy)#.astype(float)
+
+        #prodotto righe per colonne
+        edlv = np.dot(denp,gDnp)
+
+        if False == True : #self.codim() == 1 :
+
+            lvnp = np.asarray(lv["cp"]).astype(float)
+
+            gDnp = gDnp.reshape((len(gDnp),))
+            edlv = edlv.reshape((len(edlv),))
+
+            #
+            cpint = np.linalg.solve(dinp,lvnp-edlv) 
+
+            #assegno ai control points i valori calcolati
+            #valori interni
+            for i in range(len(index_int)):
+                j = index_int[i]
+                self._cp[j] = cpint[i]
+                #out.iloc[out.index == j] = cpint[i]
+
+            #assegno ai control points i valori calcolati
+            #valori di bordo interpolanti
+            for i in range(len(index_edge)):
+                j = index_edge[i]
+                self._cp[j] = gDnp[i]
+                #out.iloc[out.index == j] = gDnp[i]
 
         else :
 
-            lv2 = pd.DataFrame(columns=np.arange(0,self.codim()),index=lv.index)
+            lvnpND = np.asarray(lv["cp"])#.astype(float)
+            lvnpND = np.zeros(shape=(len(lv),self.codim()))
+            for i in range(len(lv)):
+                lvnpND[i,:] = lv["cp"][i]    
+
+            gDnpND = gDnp
+            edlvND = edlv
+            out = pd.DataFrame(index=index_int,columns=np.arange(0,self.codim()))
+            index = self.index_list()
+            it = [ tuple(j) for j in index ]
             for k in range(self.codim()):
-                for i in lv2.index :
-                    lv2.at[i,k] =lv.at[i,"cp"][k]
-            lv2.replace(np.nan,0.0,inplace=True)
 
-            out = pd.DataFrame(index=om.index,columns=np.arange(0,self.codim()))
+                gDnp = gDnpND[:,k]
+                edlv = edlvND[:,k]
+                lvnp = lvnpND[:,k]
 
-            for k in range(self.codim()):
+                gDnp = gDnp.reshape((len(gDnp),))
+                edlv = edlv.reshape((len(edlv),))
 
-                lvnp = np.asarray(lv2[k])
-                cp  = np.linalg.solve(omnp,lvnp)
+                #
+                cpint = np.linalg.solve(dinp,lvnp-edlv) 
 
-                out[k] = cp
+                #cp = pd.DataFrame(index=it,columns=["cp"])
 
-            for i in range(len(cp)):
-                j = out.index[i]
-                self.set_cp(j, out.iloc[i])
-        if self.codim() == 1 :
-            self._cp = self._cp.astype(float)
-        return out  
-       
+                out[k] = cpint
+
+            #assegno ai control points i valori calcolati
+            #valori interni
+            for i in range(len(index_int)):
+                j = index_int[i]
+                self._cp[j] = np.asarray(out.iloc[i,:])
+                #out.iloc[out.index == j] = cpint[i]
+
+            #assegno ai control points i valori calcolati
+            #valori di bordo interpolanti
+            for i in range(len(index_edge)):
+                j = index_edge[i]
+                self._cp[j] = gDnpND[i]
+                #out.iloc[out.index == j] = gDnp[i]
+        
+        return self.control_points()
     ###
     def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
         sh = shape(dim=self.dim(),codim=1)
