@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[11]:
+# In[14]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -956,14 +956,16 @@ class Bspline :
                     XY.at[i,k] = xmin
 
         xy = np.asarray(XY).astype(float)
+        if self.dim() == 1 :
+            xy = xy.reshape((len(xy),))
 
         #
         gDnp = func(xy)#.astype(float)
 
-        #prodotto righe per colonne
-        edlv = np.dot(denp,gDnp)
-
         if False == True : #self.codim() == 1 :
+
+            #prodotto righe per colonne
+            edlv = np.dot(denp,gDnp)
 
             lvnp = np.asarray(lv["cp"]).astype(float)
 
@@ -989,21 +991,34 @@ class Bspline :
 
         else :
 
+            #print("ciao")
             lvnpND = np.asarray(lv["cp"])#.astype(float)
             lvnpND = np.zeros(shape=(len(lv),self.codim()))
             for i in range(len(lv)):
                 lvnpND[i,:] = lv["cp"][i]    
 
+            if self.codim() == 1 :
+                a = gDnp.copy()
+                gDnp = np.zeros(shape=(len(a),self.codim()))
+                gDnp[:,0] = a
+                del a
             gDnpND = gDnp
-            edlvND = edlv
+
+            #prodotto righe per colonne
+            #edlv = np.dot(denp,gDnp)
+            #edlvND = edlv
+
+
             out = pd.DataFrame(index=index_int,columns=np.arange(0,self.codim()))
             index = self.index_list()
             it = [ tuple(j) for j in index ]
             for k in range(self.codim()):
 
                 gDnp = gDnpND[:,k]
-                edlv = edlvND[:,k]
+                edlv = np.dot(denp,gDnp)
+                #edlv = edlvND[:,k]
                 lvnp = lvnpND[:,k]
+
 
                 gDnp = gDnp.reshape((len(gDnp),))
                 edlv = edlv.reshape((len(edlv),))
