@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[29]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -101,12 +101,17 @@ class knot_vector:
     
 def uniform_open_kv(xmin,xmax,p,n):
     v = np.concatenate((np.linspace(xmin,xmin,p),np.linspace(xmin,xmax,n-p+1),np.linspace(xmax,xmax,p)))
-    return knot_vector(p,n,v)                     
+    return knot_vector(p,n,v)          
+
+def periodic_kv(xmin,xmax,p,n):
+    v0 = np.linspace(0.,1.0,n+p+1+p,endpoint=True)
+    v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
+    return knot_vector(p,n+p,v,check_open=False)      
 
 
 # ## Bspline class
 
-# In[3]:
+# In[12]:
 
 
 import copy
@@ -158,12 +163,12 @@ class Bspline :
         #dim    = sh.dim()        
         self._sh = sh
         
-        self._periodic = np.full(False,self.dim(),dtype=bool)
+        self._periodic = np.full(sh.dim(),False,dtype=bool)
         if periodic is None :
-            periodic = np.full(False,self.dim(),dtype=bool)
+            periodic = self._periodic
         if self.dim() == 1:
             self._periodic[0] = periodic
-        elif len(periodic) != self.dim():
+        elif len(periodic) != sh.dim():
             print("Error : periodic array of wrong lenght")
             raise Exception()  
         else :
@@ -257,19 +262,47 @@ class Bspline :
     ###
     def is_periodic(self):
         return np.any(self._periodic)
+    
+    ###
+    def periodicity(self):
+        index = self.control_points().index
+        index = [ ii[0] for ii in index]
+        cp = pd.DataFrame(index = index,columns=["periodic"])
+        cp["periodic"] = None
+        for i in index:
+            j = self.get_periodic_index(i)
+            if j != i :
+                cp.at[i,"periodic"] = j
+        return cp
     ###
     def get_periodic_index(self,index):
-        out = self.Index_t()
+        #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
+        # 0 -> n-p
+        # 1 -> n-p+1
+        # ...
+        # p-1 -> n-1
+        # in general
+        # first p
+        # j -> t = n-p+j
+        # last p
+        # j -> j-n+p
+        if self.dim() == 1 :
+            index = [index]
+        out = list(np.full(self.dim(),0))
         for i in range(self.dim()):
             j = index[i]
-            n = self._kv[i].n()-1
-            if j == 0 :
-                out[i] = n
-            elif j == n:
-                out[i] = 0 
+            n = self._kv[i].n()
+            p = self._kv[i].p()
+            if j <= p :
+                out[i] = n-p+j-1#n-1-j
+            elif j >= n-p-1:
+                out[i] = j-n+p+1
             else :
                 out[i] = j
-        return out
+        if self.dim() != 1 :
+            return tuple(out)
+        else :
+            return out[0]
     ### set control point value/coordinates
     def set_cp (self,index,value,check=True) :
         
@@ -311,9 +344,13 @@ class Bspline :
             index = df.index[i]
             df.iloc[i] = self._cp[index]
         return df
-    ###
+    ### da rivedere
     def clear_cp (self) : 
-        self._cp = np.zeros(self._cp.shape)
+        cp = np.zeros(self._cp.shape,dtype=object)#,np.zeros(bs.codim()))
+        cp.fill(np.zeros(self.codim()))
+        if self.codim() == 1 :
+            cp = cp.astype(float)
+        self._cp = cp#np.full(self._cp.shape,np.full(self.codim(),0)).astype(float)
         self_ready_sm = False
         self_ready_om = False
         #self_ready_lv = False
@@ -933,10 +970,10 @@ class Bspline :
         index = self.index_list()
         it = [ tuple(j) for j in index ]        
 
-        #edge
+        #edge -> da rivedere
         edge = self.edge()
 
-        #overlap matrix   
+        #overlap matrix
         om = self.overlap_matrix(opts)
         om.replace(np.nan,0.0,inplace=True)
 
@@ -946,12 +983,12 @@ class Bspline :
             index_int  = edge.index[ edge["edge"] == False ]
             index_edge = edge.index[ edge["edge"] == True  ]
 
-            #degrees of freedem: internal
+            #degrees of freedom: internal
             dof_int = om.copy()
             dof_int.drop( index_edge ,inplace = True,axis=0)
             dof_int.drop( index_edge ,inplace = True,axis=1)
 
-            #degrees of freedem: edge
+            #degrees of freedom: edge
             dof_edge = om.copy()
             dof_edge.drop( index_edge ,inplace = True,axis=0)
             dof_edge.drop( index_int  ,inplace = True,axis=1)
@@ -963,13 +1000,14 @@ class Bspline :
 
             #convert into numpy array
             dinp = np.asarray(dof_int)
-            denp = np.asarray(dof_edge)
-            #
-            #if gD is None :
-            #    gD = lambda xx : np.zeros(shape=(len(xx),self.codim()))
-
+            denp = np.asarray(dof_edge)            
+            
             #
             gDv = self.Dirichlet_BC(func,opts)
+                        
+            # -> da rivedere
+            # qui devo introdurre del codice per gestire 
+            # il fatto che la Bspline può essere periodica
 
             #load vector
             lvnp = np.asarray(lv)
@@ -982,16 +1020,24 @@ class Bspline :
             cpint = np.linalg.solve(dinp,lvnp-edlv) 
 
             #preparo gli indice della variabile di output
-            index = self.index_list()
-            it = [ tuple(j) for j in index ]
+            #index = self.index_list()
+            #it = [ tuple(j) for j in index ]
             #out = pd.DataFrame(index=it,columns=["cp"])
 
+            # -> da rivedere
+            # cpint.index sarà diverso da index_int
+            # sostituire index_int con cpint.index
+            
             #assegno ai control points i valori calcolati
             #valori interni
             for i in range(len(index_int)):
                 j = index_int[i]
                 self._cp[j] = cpint[i]
                 #out.iloc[out.index == j] = cpint[i]
+                
+            # -> da rivedere
+            # gDnp.index sarà diverso da index_edge
+            # sostituire index_edge con gDnp.index
 
             #assegno ai control points i valori calcolati
             #valori di bordo interpolanti
@@ -1069,11 +1115,15 @@ class Bspline :
             #prodotto righe per colonne
             #edlv = np.dot(denp,gDnp)
             #edlvND = edlv
+            
+            # -> da rivedere
+            # qui devo introdurre del codice per gestire 
+            # il fatto che la Bspline può essere periodica
 
 
             out = pd.DataFrame(index=index_int,columns=np.arange(0,self.codim()))
-            index = self.index_list()
-            it = [ tuple(j) for j in index ]
+            #index = self.index_list()
+            #it = [ tuple(j) for j in index ]
             for k in range(self.codim()):
 
                 gDnp = gDnpND[:,k]
@@ -1107,7 +1157,8 @@ class Bspline :
                 #out.iloc[out.index == j] = gDnp[i]
         
         return self.control_points()
-    ###
+    
+    ##
     def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
         sh = shape(dim=self.dim(),codim=1)
         kv = self._kv        
@@ -1120,7 +1171,7 @@ class Bspline :
         columns = ["Dirichlet"]
         return pd.DataFrame(data=np.full(len(it),0),index=it,columns=columns)
         
-    ### da rivedere
+    ### da rivedere: controllare
     def trace(self,n,opts=None):
         
         
@@ -1140,8 +1191,9 @@ class Bspline :
         # n : dimensione da tracciare
         
         new_sh = shape(dim=self.dim()-1,codim=self.codim())        
-        kv     =    [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != n ]    
-        curve  = Bspline(new_sh,kv)
+        kv     = [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != n ]  
+        per    = self._periodic.copy().drop(n)
+        curve  = Bspline(new_sh,kv,periodic=per)
         
         self._ready_trace[n] = True
         self._trace_Bspline[n] = curve.copy()
@@ -1278,7 +1330,7 @@ class Bspline :
             self._cp = self._cp.astype(float)
         return out      
     
-    ### da rivedere
+    ###
     def stiffness_matrix(self,opts=None):
         
         opts = self.prepare_opts(opts)
@@ -1453,7 +1505,7 @@ class Bspline :
         self._ready_sm = True
         return out
      
-    ### da rivedere
+    ###
     def load_vector(self,func,opts=None): 
         
         opts = self.prepare_opts(opts)
