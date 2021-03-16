@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[29]:
+# In[33]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -104,6 +104,7 @@ def uniform_open_kv(xmin,xmax,p,n):
     return knot_vector(p,n,v)          
 
 def periodic_kv(xmin,xmax,p,n):
+    #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
     v0 = np.linspace(0.,1.0,n+p+1+p,endpoint=True)
     v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
     return knot_vector(p,n+p,v,check_open=False)      
@@ -286,7 +287,7 @@ class Bspline :
         # j -> t = n-p+j
         # last p
         # j -> j-n+p
-        if self.dim() == 1 :
+        if self.dim() == 1 and type(index) is not tuple:
             index = [index]
         out = list(np.full(self.dim(),0))
         for i in range(self.dim()):
@@ -560,11 +561,11 @@ class Bspline :
                 kt     = kv.knots()
 
                 if k != K :
-                    der_kv.append(knot_vector(kv.p(),kv.n(),kt)) 
+                    der_kv.append(knot_vector(kv.p(),kv.n(),kt,check_open=False)) 
                 else :     
-                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
+                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1],check_open=False))         
             #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
-            derK = Bspline(der_sh,der_kv)
+            derK = Bspline(der_sh,der_kv,periodic=self._periodic)
 
             #
             KV     = self._kv[K]
@@ -771,6 +772,21 @@ class Bspline :
                 am.at[c,r] = intersection
                 
         return am
+    
+        if self.is_periodic() == False:
+            return am
+        else :
+            index = [ list(i)[0] for i in am.index]
+            new_index = [ self.get_periodic_index(i) for i in index ]
+            ni = [ tuple([i]) for i in new_index]
+
+            #adjacency matrix of periodic control points
+            ams = am.copy()
+            ams.index = ni
+            ams.reindex(am.index,axis=0)
+            out = ams+am
+            out = out.astype(bool)
+            return out
     
     ### da rivedere
     def basis_max_min(self,r,br=None):
