@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[34]:
+# In[9]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -125,6 +125,8 @@ import time
 #import json
 import pickle
 import re
+from numpy import random
+import scipy.special
 
 class Bspline :
     
@@ -227,9 +229,11 @@ class Bspline :
         #
         self._stiffness_matrix = None
         self._overlap_matrix = None
+        self._stiffness_matrix_BEM = None
         #self._load_vector = None
         self._ready_sm = False #stiffness matrix
         self._ready_om = False #overlap matrix
+        self._ready_sm_BEM = False
         #self._ready_lv = False #load vector
         
         self._trace_Bspline = [ 0 for i in range(self.dim())]
@@ -323,8 +327,9 @@ class Bspline :
                 tip = self.get_periodic_index(index)
                 self._cp[tip] = value
                 
-        self_ready_sm = False
-        self_ready_om = False
+        self._ready_sm = False
+        self._ready_om = False
+        self._ready_sm_BEM = False
         #self_ready_lv = False
         return True                                     
     ### some function returing some variables, not very usefull...
@@ -352,8 +357,9 @@ class Bspline :
         if self.codim() == 1 :
             cp = cp.astype(float)
         self._cp = cp#np.full(self._cp.shape,np.full(self.codim(),0)).astype(float)
-        self_ready_sm = False
-        self_ready_om = False
+        self._ready_sm = False
+        self._ready_om = False
+        self._ready_sm_BEM = False
         #self_ready_lv = False
     ###
     def show(self,what="all"):
@@ -956,6 +962,8 @@ class Bspline :
             opts["ready_om"] = True
         if "ready_sm" not in opts :
             opts["ready_sm"] = True
+        if "ready_sm_BEM" not in opts :
+            opts["ready_sm_BEM"] = True
         if "interpolation" not in opts:
             opts["interpolation"] = True
         #if "ready_lv" not in opts :
@@ -1616,12 +1624,13 @@ class Bspline :
             #
             if opts["print"] == True : start = time.time()
             y = integrate (Xintegration)
-            if opts["norm"] == "L1" :
-                #modifica
-                res = np.mean(y, axis=0) if self.codim() > 1 else np.mean(y)
-            elif opts["norm"] == "L2" :
-                #modifica
-                res = np.sqrt(np.sum(np.power(y,2.0),axis=0))/len(y) if self.codim() > 1                 else np.sqrt(np.sum(np.power(y,2.0)))/len(y)
+            #if opts["norm"] == "L1" :
+            #modifica
+            res = np.mean(y, axis=0) if self.codim() > 1 else np.mean(y)
+            #elif opts["norm"] == "L2" :
+            #modifica
+            #    res = np.sqrt(np.sum(np.power(y,2.0),axis=0))/len(y) if self.codim() > 1 \
+            #    else np.sqrt(np.sum(np.power(y,2.0)))/len(y)
             #modifica
             out.at[i,"cp"] = res * area
             if opts["print"] == True : endt = time.time()
@@ -1637,7 +1646,243 @@ class Bspline :
         #self._ready_lv = True
         return out       
     
+    ###
+    #BEM
     
+    ##
+    def stiffness_matrix_BEM(self,k=1.0,opts=None):
+        
+        opts = self.prepare_opts(opts)
+
+        if opts["ready_sm_BEM"] == False:
+            self._ready_sm_BEM = False
+
+        if self._ready_sm_BEM == True :
+            return self._stiffness_matrix_BEM
+
+        conta = 1
+        for k in range(0,self.dim()):
+            conta = conta * opts["delta"][k]
+        Xintegration = np.zeros(shape=(conta,self.dim()))
+        Yintegration = Xintegration.copy()
+        del conta
+
+        #X = np.full(self.dim(),0.0,dtype=object)
+        X = np.full(self.dim(),0.0,dtype=object)
+        for k in range(0,self.dim()):
+            X[k] =  np.full(opts["delta"][k],0.0)
+        Y = X.copy()
+
+
+        
+
+        #a djacency matrix
+        am = self.adjacency_matrix()
+        # basis range
+        br = self.basis_range()
+        # derivative
+        der = self.derivative()
+        # basis function: left 
+        scalar = self._scalar()
+        # basis function: right 
+        left   = scalar.copy()
+        left.clear_cp()
+        #
+        right  = scalar.copy()        
+        right.clear_cp()
+        #
+        del scalar
+
+        # out variable
+        out = pd.DataFrame(0.0,index=am.index,columns=am.columns,dtype=np.complex)
+
+        # unità immaginaria
+        I = np.complex(0,1)
+        
+        def foundamental(d):
+            return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0  
+
+        def integrate(xy):
+            x = xy[:,0]
+            y = xy[:,1]
+            l = left.evaluate(x)
+            r = right.evaluate(y)#.conjugate()
+            dl = [ norm(i) for i in der.evaluate(x) ]
+            dr = [ norm(i) for i in der.evaluate(y) ]
+            xx = self.evaluate(x).astype(float)
+            yy = self.evaluate(y).astype(float)
+            d = np.asarray([ norm(i) for i in xx-yy ])
+            f = foundamental(d)
+            return f*d*l*dl*dr
+
+
+        #
+        n = am.shape[0]
+        for i in range(0,n):
+
+            #
+            r = am.index[i] 
+            left.set_cp(r,1.0)
+            der_left  = left.derivative()
+
+            areaX = 1.0
+            for k in range(0,self.dim()):
+                # ATTENZIONE ALLA DERIVATA LOGARITMICA
+                xmin = br.at[r,("min",k)]
+                xmax = br.at[r,("max",k)]
+                delta = xmax-xmin
+                punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+                punti  = np.delete(punti0,0)
+                numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
+                #numradY = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
+                X[k] = punti+numradX
+                areaX = areaX*delta
+                #Y[k] = punti+numradY
+
+            for j in range(i,n):
+
+                c = am.columns[j]
+
+                # LA MATRICE E' DENSA
+                #if am.at[r,c] is False :
+                #    continue
+
+                #
+                right.set_cp(c,1.0)
+                #ov = self.basis_overlap(r,c,br)
+                der_right = right.derivative()
+
+                # ATTENZIONE:
+                # preparare X e Y in due step diversi, si riferiscono a due funzioni di base diverse
+                # una dentro e l'altra fuori dal ciclo
+                # considerare i range di entrambe le funzioni di base
+                # provare a calcolare X e Y all'inizio di tutto quanto
+
+                # questi sono da modificare  
+                areaY = 1.0
+                for k in range(0,self.dim()):
+                    # ATTENZIONE ALLA DERIVATA LOGARITMICA
+                    xmin = br.at[c,("min",k)]
+                    xmax = br.at[c,("max",k)]
+                    delta = xmax-xmin
+                    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+                    punti  = np.delete(punti0,0)
+                    #umradX = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
+                    numradY = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
+                    #X[k] = punti+numradX
+                    Y[k] = punti+numradY
+                    areaY = areaY*delta
+
+                # devo usare np.meshgrid
+                mX = np.meshgrid(*X)
+                mY = np.meshgrid(*Y)
+                for k in range(0,self.dim()):
+                    Xintegration[:,k] = mX[k].flatten()
+                    Yintegration[:,k] = mY[k].flatten()
+
+                # questo è ottimizzabile
+                meshN = len(Xintegration)*len(Yintegration)
+                mesh = np.zeros((meshN,2),dtype=object)
+                mesh.fill(Xintegration[0])
+                n1 = len(Xintegration)
+                n2 = len(Yintegration)
+                for i in range(n1):
+                    for j in range(n2):
+                        k = n1*i+j
+                        mesh[k,0] = Xintegration[i]
+                        mesh[k,1] = Yintegration[j]
+                mesh = mesh [ mesh[:,0] != mesh[:,1]  ]
+
+                if self.codim() == 1:
+                    mesh = mesh.astype(float)
+
+                ###
+                # VALUTAZIONE DELL'INTEGRALE
+
+                y = integrate(mesh)
+                res = np.mean(y)*areaX*areaY
+
+                ###
+                # FINE
+
+                #    
+                out.at[r,c] = res
+                out.at[c,r] = res #matrice simmetrica
+
+                #cancello
+                right.set_cp(c,0.0)
+
+                #cancello
+            left.set_cp(r,0.0)
+            
+        self._stiffness_matrix_BEM = out.copy()
+        self._ready_sm_BEM = True
+        return out
+    
+    ###
+    def load_vector_BEM(self,gD,opts=None):
+        
+        opts = self.prepare_opts(opts)
+        
+        #edge = self.edge()
+
+        #
+        X = np.full(self.dim(),0.0,dtype=object)
+        for k in range(0,self.dim()):
+            X[k] =  np.full(opts["delta"][k],0.0)
+        conta = 1
+        for k in range(0,self.dim()):
+            conta = conta * opts["delta"][k]
+        Xintegration = np.zeros(shape=(conta,self.dim()))
+
+        #
+        br = self.basis_range()
+        il = self.index_list()
+        il = [ tuple(i) for i in il ]
+        der = self.derivative()
+        scalar = self._scalar()
+        scalar.clear_cp()
+        out = pd.DataFrame(index = il, columns=["cp"],dtype=object)
+        #out["index"] = il
+        #out.set_index("index",inplace=True)
+
+        #definisco la norma di Lebesgue
+
+        def integrate(x):
+            a = scalar.evaluate(x)
+            xx = self.evaluate(x)
+            b = gD(xx)
+            d0 = der.evaluate(x)
+            d = [ norm(i) for i in d0 ]
+            return a*b*d
+
+        for i in il :
+
+            #i = tuple(i)
+            scalar.set_cp(i,1.0)
+            #ov = self.basis_overlap(i,i,br) #overlap
+
+            areaX = 1.0
+            for k in range(0,self.dim()):
+                xmin = br.at[i,("min",k)]
+                xmax = br.at[i,("max",k)]
+                delta = xmax-xmin
+                punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+                punti  = np.delete(punti0,0)
+                numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
+                X[k] = punti+numradX
+                areaX = areaX*delta
+
+            m = np.meshgrid(*X)
+            for k in range(0,self.dim()):
+                Xintegration[:,k] = m[k].flatten()
+
+            y = integrate (Xintegration)
+            out.at[i,"cp"] = np.mean(y) * areaX
+
+            scalar.set_cp(i,0.0)
+        return out
+            
     ###
     def save(self,variable,filename):
         if variable == "sm":
@@ -1648,6 +1893,8 @@ class Bspline :
             var = self._load_vector
         elif variable == "cp" :
             var = self.control_points()
+        elif variable == "sm-BEM" :
+            var = self.stiffness_matrix_BEM()
         var.to_csv(filename,index_label="index")
         
     ###
@@ -1661,6 +1908,10 @@ class Bspline :
             var.columns = [tuple_from_str(i) for i in var.columns]
             self._stiffness_matrix = var.copy()
             self._ready_sm = True
+        elif variable == "sm-BEM":
+            var.columns = [tuple_from_str(i) for i in var.columns]
+            self._stiffness_matrix_BEM = var.copy()
+            self._ready_sm_BEM = True
         elif variable == "om":
             var.columns = [tuple_from_str(i) for i in var.columns]
             self._overlap_matrix = var.copy()
@@ -1676,7 +1927,10 @@ class Bspline :
                     self._cp[i,k] = var.at[i,k]
             #self._cp = var.copy()
 
-
+###
+def norm(x):
+    return np.sqrt(np.sum(np.power(x,2.0)))        
+      
 ###
 def tuple_from_str(string):
     return tuple(map(int, re.findall(r'[0-9]+', string)))
@@ -1691,152 +1945,6 @@ def overlaps(a, b):
     else :
         return c
 
-
-# 
-#         #edge
-#         edge = self.edge()
-# 
-#         #indici dei dof interni e di bordo
-#         index_int  = edge.index[ edge["corner"] == False ]
-#         index_edge = edge.index[ edge["corner"] == True  ]        
-#         
-#         #overlap matrix   
-#         om = self.overlap_matrix(opts)
-#         om.replace(np.nan,0.0,inplace=True)
-# 
-#         #degrees of freedem: internal
-#         dof_int = om.copy()
-#         dof_int.drop( index_edge ,inplace = True,axis=0)
-#         dof_int.drop( index_edge ,inplace = True,axis=1)
-# 
-#         #degrees of freedem: edge            
-#         dof_edge = om.copy()
-#         dof_edge.drop( index_edge ,inplace = True,axis=0)
-#         dof_edge.drop( index_int  ,inplace = True,axis=1)
-# 
-#         #convert into numpy array
-#         dinp = np.asarray(dof_int)
-#         denp = np.asarray(dof_edge)
-#         
-#         #load vector
-#         lv = self.load_vector(func,opts)
-#         lv.drop( index_edge  ,inplace = True) 
-#         lvnp = np.asarray(lv["cp"]).astype(float)
-# 
-#         #
-#         XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
-#         for k in range(self.dim()):
-#             kv = self.knots_vectors()[k]
-#             nmax = kv.n()-1
-#             xmin = min(kv.knots())
-#             xmax = max(kv.knots())
-#             for i in index_edge:
-#                 if i[k] == nmax :
-#                     XY.at[i,k] = xmax
-#                 else :
-#                     XY.at[i,k] = xmin
-# 
-#         xy = np.asarray(XY).astype(float)
-# 
-#         gDnp = func(xy)
-# 
-#         #prodotto righe per colonne
-#         edlv = np.dot(denp,gDnp)
-# 
-#         cpint = np.linalg.solve(dinp,lvnp-edlv) 
-# 
-#         #out = pd.DataFrame(cp,index=om.index,columns=["cp"])
-# 
-#         index = self.index_list()
-#         it = [ tuple(j) for j in index ]
-#         out = pd.DataFrame(index=it,columns=["cp"])
-# 
-#         for i in range(len(index_int)):
-#             j = index_int[i]
-#             self._cp[j] = cpint[i]
-#             out.iloc[out.index == j] = cpint[i]
-# 
-#         #assegno ai control points i valori calcolati
-#         #valori di bordo interpolanti
-#         for i in range(len(index_edge)):
-#             j = index_edge[i]
-#             self._cp[j] = gDnp[i]
-#             out.iloc[out.index == j] = gDnp[i]
-#            
-#         return out       
-#        
-
-# opts = self.prepare_opts(opts)        
-# 
-#         #edge
-#         edge = self.edge()
-# 
-#         #indici dei dof interni e di bordo
-#         index_int  = edge.index#[ edge["corner"] == False ]
-#         index_edge = []#edge.index[ edge["corner"] == True  ]        
-#         
-#         #overlap matrix   
-#         om = self.overlap_matrix(opts)
-#         om.replace(np.nan,0.0,inplace=True)
-# 
-#         #degrees of freedem: internal
-#         dof_int = om.copy()
-#         dof_int.drop( index_edge ,inplace = True,axis=0)
-#         dof_int.drop( index_edge ,inplace = True,axis=1)
-# 
-#         #degrees of freedem: edge            
-#         dof_edge = om.copy()
-#         dof_edge.drop( index_edge ,inplace = True,axis=0)
-#         dof_edge.drop( index_int  ,inplace = True,axis=1)
-# 
-#         #convert into numpy array
-#         dinp = np.asarray(dof_int)
-#         denp = np.asarray(dof_edge)
-#         
-#         #load vector
-#         lv = self.load_vector(func,opts)
-#         lv.drop( index_edge  ,inplace = True) 
-#         lvnp = np.asarray(lv["cp"]).astype(float)
-# 
-#         #
-#         XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
-#         for k in range(self.dim()):
-#             kv = self.knots_vectors()[k]
-#             nmax = kv.n()-1
-#             xmin = min(kv.knots())
-#             xmax = max(kv.knots())
-#             for i in index_edge:
-#                 if i[k] == nmax :
-#                     XY.at[i,k] = xmax
-#                 else :
-#                     XY.at[i,k] = xmin
-# 
-#         xy = np.asarray(XY).astype(float)
-# 
-#         gDnp = func(xy)
-# 
-#         #prodotto righe per colonne
-#         edlv = np.dot(denp,gDnp)
-# 
-#         cpint = np.linalg.solve(dinp,lvnp-edlv) 
-# 
-#         #out = pd.DataFrame(cp,index=om.index,columns=["cp"])
-# 
-#         index = self.index_list()
-#         it = [ tuple(j) for j in index ]
-#         out = pd.DataFrame(index=it,columns=["cp"])
-# 
-#         for i in range(len(index_int)):
-#             j = index_int[i]
-#             self._cp[j] = cpint[i]
-#             out.iloc[out.index == j] = cpint[i]
-# 
-#         #assegno ai control points i valori calcolati
-#         #valori di bordo interpolanti
-#         for i in range(len(index_edge)):
-#             j = index_edge[i]
-#             self._cp[j] = gDnp[i]
-#             out.iloc[out.index == j] = gDnp[i]
 
 # ### Derivative
 
