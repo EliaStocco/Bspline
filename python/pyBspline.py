@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[33]:
+# In[34]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -889,8 +889,15 @@ class Bspline :
                 right.set_cp(c,1.0)
                 ov = self.basis_overlap(r,c,br)
 
-                #
-                X = [ np.delete(np.linspace(ov[k][0],ov[k][1],                                            opts["delta"][k]+1,endpoint=False),0)                      for k in range(0,self.dim()) ]
+                # provo a modificare
+                #X = [ np.delete(np.linspace(ov[k][0],ov[k][1],\
+                #                            opts["delta"][k]+1,endpoint=False),0) \
+                #     for k in range(0,self.dim()) ]
+                X = np.full(self.dim(),0.0,dtype=object)
+                for k in range(0,self.dim()):
+                    # opts["delta"][k] = numero di punti interni
+                    punti = np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False)
+                    X[k] = np.delete(punti,0)
 
                 area = 1
                 for k in range(0,self.dim()):
