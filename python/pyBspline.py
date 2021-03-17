@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[19]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -1922,10 +1922,15 @@ class Bspline :
             d = np.asarray([ norm(i)  for i in y-x0 ])
             return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0 
 
-        for i in range(len(XY)):
+        lenXY = len(XY)
+        for i in range(lenXY):
+            if opts["print"] :
+                print(i,"/",lenXY,end="\r")
             x0 = XY[i,:]
             lvx0 = self.load_vector_BEM(foundamental_x,opts)
             outnp[i] = lvx0["cp"]
+        if opts["print"] :
+            print("Finished")
 
         out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=il)
         
@@ -1947,7 +1952,7 @@ class Bspline :
 
         #
         out = pd.DataFrame(index=slpB.index,columns=["x","value"])
-        out["x"] = [ i for i in XY]
+        out["x"] = [ tuple(i) for i in XY]
         out["value"] = outnp
         
         return out
@@ -1970,7 +1975,20 @@ class Bspline :
         #
         slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k)
         
-        return slp
+        # convert into numpy array
+        r = len(slp)
+        c = len(slp["x"][0])
+
+        Xnp = np.zeros(shape=(r,c))
+
+        for i in range(r):
+            for j in range(c):
+                Xnp[i,j] = slp["x"][i][j]
+                
+        #
+        Valnp = np.asarray(slp["value"])
+        
+        return slp,Xnp,Valnp
             
     ###
     def save(self,variable,filename):
