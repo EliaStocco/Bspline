@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[9]:
+# In[19]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[15]:
+# In[1]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[16]:
+# In[2]:
 
 
 import numpy as np
@@ -112,7 +112,7 @@ def periodic_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[12]:
+# In[8]:
 
 
 import copy
@@ -230,10 +230,12 @@ class Bspline :
         self._stiffness_matrix = None
         self._overlap_matrix = None
         self._stiffness_matrix_BEM = None
+        self._slp_matrix_BEM = None
         #self._load_vector = None
         self._ready_sm = False #stiffness matrix
         self._ready_om = False #overlap matrix
         self._ready_sm_BEM = False
+        self._ready_slp_BEM = False
         #self._ready_lv = False #load vector
         
         self._trace_Bspline = [ 0 for i in range(self.dim())]
@@ -330,6 +332,7 @@ class Bspline :
         self._ready_sm = False
         self._ready_om = False
         self._ready_sm_BEM = False
+        self._ready_slp_BEM = False
         #self_ready_lv = False
         return True                                     
     ### some function returing some variables, not very usefull...
@@ -360,6 +363,7 @@ class Bspline :
         self._ready_sm = False
         self._ready_om = False
         self._ready_sm_BEM = False
+        self._ready_slp_BEM = False
         #self_ready_lv = False
     ###
     def show(self,what="all"):
@@ -964,6 +968,8 @@ class Bspline :
             opts["ready_sm"] = True
         if "ready_sm_BEM" not in opts :
             opts["ready_sm_BEM"] = True
+        if "ready_slp_BEM" not in opts :
+            opts["ready_slp_BEM"] = True
         if "interpolation" not in opts:
             opts["interpolation"] = True
         #if "ready_lv" not in opts :
@@ -1650,7 +1656,7 @@ class Bspline :
     #BEM
     
     ##
-    def stiffness_matrix_BEM(self,k=1.0,opts=None):
+    def stiffness_matrix_BEM(self,k,opts=None):
         
         opts = self.prepare_opts(opts)
 
@@ -1671,10 +1677,7 @@ class Bspline :
         X = np.full(self.dim(),0.0,dtype=object)
         for k in range(0,self.dim()):
             X[k] =  np.full(opts["delta"][k],0.0)
-        Y = X.copy()
-
-
-        
+        Y = X.copy()        
 
         #a djacency matrix
         am = self.adjacency_matrix()
@@ -1717,6 +1720,8 @@ class Bspline :
 
 
         #
+        successful = False
+        res =  np.complex(0,0)
         n = am.shape[0]
         for i in range(0,n):
 
@@ -1757,54 +1762,61 @@ class Bspline :
                 # una dentro e l'altra fuori dal ciclo
                 # considerare i range di entrambe le funzioni di base
                 # provare a calcolare X e Y all'inizio di tutto quanto
+                
+                successful = False
+                while not successful :
 
-                # questi sono da modificare  
-                areaY = 1.0
-                for k in range(0,self.dim()):
-                    # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                    xmin = br.at[c,("min",k)]
-                    xmax = br.at[c,("max",k)]
-                    delta = xmax-xmin
-                    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                    punti  = np.delete(punti0,0)
-                    #umradX = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
-                    numradY = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
-                    #X[k] = punti+numradX
-                    Y[k] = punti+numradY
-                    areaY = areaY*delta
+                    # questi sono da modificare  
+                    areaY = 1.0
+                    for k in range(0,self.dim()):
+                        # ATTENZIONE ALLA DERIVATA LOGARITMICA
+                        xmin = br.at[c,("min",k)]
+                        xmax = br.at[c,("max",k)]
+                        delta = xmax-xmin
+                        punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+                        punti  = np.delete(punti0,0)
+                        #umradX = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
+                        numradY = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
+                        #X[k] = punti+numradX
+                        Y[k] = punti+numradY
+                        areaY = areaY*delta
 
-                # devo usare np.meshgrid
-                mX = np.meshgrid(*X)
-                mY = np.meshgrid(*Y)
-                for k in range(0,self.dim()):
-                    Xintegration[:,k] = mX[k].flatten()
-                    Yintegration[:,k] = mY[k].flatten()
+                    # devo usare np.meshgrid
+                    mX = np.meshgrid(*X)
+                    mY = np.meshgrid(*Y)
+                    for k in range(0,self.dim()):
+                        Xintegration[:,k] = mX[k].flatten()
+                        Yintegration[:,k] = mY[k].flatten()
 
-                # questo è ottimizzabile
-                meshN = len(Xintegration)*len(Yintegration)
-                mesh = np.zeros((meshN,2),dtype=object)
-                mesh.fill(Xintegration[0])
-                n1 = len(Xintegration)
-                n2 = len(Yintegration)
-                for i in range(n1):
-                    for j in range(n2):
-                        k = n1*i+j
-                        mesh[k,0] = Xintegration[i]
-                        mesh[k,1] = Yintegration[j]
-                mesh = mesh [ mesh[:,0] != mesh[:,1]  ]
+                    # questo è ottimizzabile
+                    meshN = len(Xintegration)*len(Yintegration)
+                    mesh = np.zeros((meshN,2),dtype=object)
+                    mesh.fill(Xintegration[0])
+                    n1 = len(Xintegration)
+                    n2 = len(Yintegration)
+                    for i in range(n1):
+                        for j in range(n2):
+                            k = n1*i+j
+                            mesh[k,0] = Xintegration[i]
+                            mesh[k,1] = Yintegration[j]
+                    mesh = mesh [ mesh[:,0] != mesh[:,1]  ]
 
-                if self.codim() == 1:
-                    mesh = mesh.astype(float)
+                    if self.codim() == 1:
+                        mesh = mesh.astype(float)
 
-                ###
-                # VALUTAZIONE DELL'INTEGRALE
+                    ###
+                    # VALUTAZIONE DELL'INTEGRALE
 
-                y = integrate(mesh)
-                res = np.mean(y)*areaX*areaY
+                    y = integrate(mesh)
+                    res = np.mean(y)*areaX*areaY
 
-                ###
-                # FINE
-
+                    ###
+                    # FINE
+                    
+                    successful = not np.isnan(res)
+                    
+                    if not successful :
+                        print("found nan value: repeating the cycle")
                 #    
                 out.at[r,c] = res
                 out.at[c,r] = res #matrice simmetrica
@@ -1882,6 +1894,83 @@ class Bspline :
 
             scalar.set_cp(i,0.0)
         return out
+    
+    ###
+    def single_layer_potential_basis_BEM(self,XY=None,k=None,opts=None):
+        # variabile di output
+        # matrice con:
+        # - righe: punti x dove valutare la soluzione
+        # - colonne : funzioni di base
+        #out = pd.DataFrame(index=np.arange(0,len(XY)),columns=lv.index)
+        opts = self.prepare_opts(opts)
+
+        if opts["ready_slp_BEM"] == False:
+            self._ready_slp_BEM = False
+
+        if self._ready_slp_BEM == True :
+            return self._slp_matrix_BEM
+        
+        il = self.index_list()
+        il = [ tuple(i) for i in il ]
+        outnp = np.zeros(shape=(len(XY),len(il)),dtype=object)
+
+        #giusto per definirlo
+        x0 = XY[0,:]
+        # foundamental solution with x fixed
+        I = np.complex(0,1)
+        def foundamental_x(y):
+            d = np.asarray([ norm(i)  for i in y-x0 ])
+            return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0 
+
+        for i in range(len(XY)):
+            x0 = XY[i,:]
+            lvx0 = self.load_vector_BEM(foundamental_x,opts)
+            outnp[i] = lvx0["cp"]
+
+        out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=il)
+        
+        self._slp_matrix_BEM = out.copy()
+        self._ready_slp_BEM = True
+        return out
+    
+    ###
+    def single_layer_potential_BEM(self,sol,slpB,XY,k,opts=None):
+        
+        # sol  : solutionof linear system
+        # slpB : single layer potential (basis)
+        
+        slpBnp = np.asarray(slpB)        
+        solnp = np.asarray(sol)
+
+        #
+        outnp = np.dot(slpBnp,solnp)
+
+        #
+        out = pd.DataFrame(index=slpB.index,columns=["x","value"])
+        out["x"] = [ i for i in XY]
+        out["value"] = outnp
+        
+        return out
+    
+    ###
+    def BEM(self,uinc,k,XY,opts):
+        
+        #
+        sm = self.stiffness_matrix_BEM(k=k,opts=opts)
+        lv = self.load_vector_BEM(gD=uinc,opts=opts)
+        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts)
+        
+        # convert into umpy array
+        smnp = np.asarray(sm).astype(np.complex)
+        lvnp = np.asarray(lv).reshape((len(lv),)).astype(np.complex)
+        
+        #
+        sol = scipy.linalg.solve(smnp,lvnp,assume_a="sym")
+        
+        #
+        slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k)
+        
+        return slp
             
     ###
     def save(self,variable,filename):
@@ -1894,31 +1983,49 @@ class Bspline :
         elif variable == "cp" :
             var = self.control_points()
         elif variable == "sm-BEM" :
-            var = self.stiffness_matrix_BEM()
+            var = self._stiffness_matrix_BEM
+        elif variable == "slp-BEM" :
+            var = self._slp_matrix_BEM
         var.to_csv(filename,index_label="index")
         
     ###
     def load(self,variable,filename):
         
         var = pd.read_csv(filename)
-        var.index = [tuple_from_str(i) for i in var.iloc[:,0]]
-        var = var.drop('index',axis=1)
+                
+        #l eggo e preparo gli indici
+        int_index = ["sm","sm-BEM","om","cp"]
+        if variable in int_index:
+            var.index = [tuple_from_str(i) for i in var["index"] ]
+            var = var.drop('index',axis=1)
+                
+        # leggo e preparo le colonne
+        int_col = ["sm","sm-BEM","om"]
+        if variable in int_col:
+            var.columns = [tuple_from_str(i) for i in var.columns]
         
-        if variable == "sm":
-            var.columns = [tuple_from_str(i) for i in var.columns]
+        # leggo e preparo i valori
+        if variable == "sm":  
             self._stiffness_matrix = var.copy()
-            self._ready_sm = True
+            self._ready_sm = True     
+                
         elif variable == "sm-BEM":
-            var.columns = [tuple_from_str(i) for i in var.columns]
-            self._stiffness_matrix_BEM = var.copy()
-            self._ready_sm_BEM = True
+            #var = var.applymap(np.complex)
+            self._stiffness_matrix_BEM = var.applymap(np.complex)#copy()
+            self._ready_sm_BEM = True 
+                           
         elif variable == "om":
-            var.columns = [tuple_from_str(i) for i in var.columns]
             self._overlap_matrix = var.copy()
-            self._ready_om = True
-        elif variable == "lv":
-            self._load_vector = var.copy()
-            self._ready_lv = True
+            self._ready_om = True     
+            
+        elif variable == "slp-BEM":
+            var.index = [ tuple_float_from_str(i) for i in var["index"]]
+            var = var.drop('index',axis=1)
+            var.columns = [tuple_from_str(i) for i in var.columns]
+            #var = var.applymap(np.complex)
+            self._slp_matrix_BEM = var.applymap(np.complex)#.copy()
+            self._ready_slp_BEM = True    
+                     
         elif variable == "cp" :
             var.columns = [ int(i) for i in var.columns ]
             index = var.index
@@ -1932,8 +2039,12 @@ def norm(x):
     return np.sqrt(np.sum(np.power(x,2.0)))        
       
 ###
-def tuple_from_str(string):
-    return tuple(map(int, re.findall(r'[0-9]+', string)))
+def tuple_from_str(string,comand=r'[0-9]+'):
+    return tuple(map(int, re.findall(comand, string)))
+
+###
+def tuple_float_from_str(string,comand="\d+\.\d+"):
+    return tuple(map(float, re.findall(comand, string)))
 
     
 ###        
