@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[19]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[1]:
+# In[7]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[2]:
+# In[8]:
 
 
 import numpy as np
@@ -105,14 +105,17 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 def periodic_kv(xmin,xmax,p,n):
     #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
-    v0 = np.linspace(0.,1.0,n+p+1+p,endpoint=True)
-    v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
-    return knot_vector(p,n+p,v,check_open=False)      
+    #v0 = np.linspace(0.,1.0,n+p+1+p,endpoint=True)
+    #v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
+    #return knot_vector(p,n+p,v,check_open=False)  
+    v0 = np.linspace(0.,1.0,n+1+p,endpoint=True)
+    v = xmin + (v0 - v0[p])/v0[n-p]*(xmax-xmin)
+    return knot_vector(p,n,v,check_open=False)  
 
 
 # ## Bspline class
 
-# In[8]:
+# In[9]:
 
 
 import copy
@@ -228,14 +231,24 @@ class Bspline :
         
         #
         self._stiffness_matrix = None
-        self._overlap_matrix = None
+        self._overlap_matrix = None        
+        #
         self._stiffness_matrix_BEM = None
         self._slp_matrix_BEM = None
-        #self._load_vector = None
+        self._sol_BEM = None
+        self._ind_sol_BEM = None
+        self._lv_BEM = None        
+        
+        #
         self._ready_sm = False #stiffness matrix
-        self._ready_om = False #overlap matrix
+        self._ready_om = False #overlap matrix        
+        #
         self._ready_sm_BEM = False
         self._ready_slp_BEM = False
+        self._ready_sol_BEM = False
+        self._ready_lv_BEM = False
+        self._ready_ind_sol_BEM = False
+        
         #self._ready_lv = False #load vector
         
         self._trace_Bspline = [ 0 for i in range(self.dim())]
@@ -333,6 +346,10 @@ class Bspline :
         self._ready_om = False
         self._ready_sm_BEM = False
         self._ready_slp_BEM = False
+        self._ready_sol_BEM = False
+        self._ready_lv_BEM = False
+        self._ready_ind_sol_BEM = False        
+        
         #self_ready_lv = False
         return True                                     
     ### some function returing some variables, not very usefull...
@@ -364,7 +381,9 @@ class Bspline :
         self._ready_om = False
         self._ready_sm_BEM = False
         self._ready_slp_BEM = False
-        #self_ready_lv = False
+        self._ready_sol_BEM = False
+        self._ready_lv_BEM = False
+        self._ready_ind_sol_BEM = False        
     ###
     def show(self,what="all"):
         
@@ -966,10 +985,18 @@ class Bspline :
             opts["ready_om"] = True
         if "ready_sm" not in opts :
             opts["ready_sm"] = True
+            
         if "ready_sm_BEM" not in opts :
             opts["ready_sm_BEM"] = True
         if "ready_slp_BEM" not in opts :
             opts["ready_slp_BEM"] = True
+        if "ready_sol_BEM" not in opts :
+            opts["ready_sol_BEM"] = True   
+        if "ready_ind_sol_BEM" not in opts :
+            opts["ready_ind_sol_BEM"] = True   
+        if "ready_lv_BEM" not in opts :
+            opts["ready_lv_BEM"] = True   
+            
         if "interpolation" not in opts:
             opts["interpolation"] = True
         #if "ready_lv" not in opts :
@@ -1836,6 +1863,12 @@ class Bspline :
         
         opts = self.prepare_opts(opts)
         
+        if opts["ready_lv_BEM"] == False:
+            self._ready_lv_BEM = False
+
+        if self._ready_lv_BEM == True :
+            return self._lv_BEM
+        
         #edge = self.edge()
 
         #
@@ -1893,6 +1926,9 @@ class Bspline :
             out.at[i,"cp"] = np.mean(y) * areaX
 
             scalar.set_cp(i,0.0)
+            
+        self._lv_BEM =out.copy()
+        self._ready_lv_BEM = True
         return out
     
     ###
@@ -1932,7 +1968,7 @@ class Bspline :
         if opts["print"] :
             print("Finished")
 
-        out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=il)
+        out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=il)#["x",il])
         
         self._slp_matrix_BEM = out.copy()
         self._ready_slp_BEM = True
@@ -1941,11 +1977,20 @@ class Bspline :
     ###
     def single_layer_potential_BEM(self,sol,slpB,XY,k,opts=None):
         
-        # sol  : solutionof linear system
+        # sol  : solution of linear system
         # slpB : single layer potential (basis)
         
+        opts = self.prepare_opts(opts)
+
+        if opts["ready_sol_BEM"] == False:
+            self._ready_sol_BEM = False
+
+        if self._ready_sol_BEM == True :
+            return self._sol_BEM
+        
+        #        
         slpBnp = np.asarray(slpB)        
-        solnp = np.asarray(sol)
+        solnp = np.asarray(sol["value"])
 
         #
         outnp = np.dot(slpBnp,solnp)
@@ -1955,41 +2000,102 @@ class Bspline :
         out["x"] = [ tuple(i) for i in XY]
         out["value"] = outnp
         
+        self._sol_BEM = out.copy()
+        self._ready_sol_BEM = True
         return out
     
     ###
-    def BEM(self,uinc,k,XY,opts):
+    def indirect_solution_BEM(self,sm=None,lv=None,opts=None):
         
-        #
-        sm = self.stiffness_matrix_BEM(k=k,opts=opts)
-        lv = self.load_vector_BEM(gD=uinc,opts=opts)
-        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts)
+        opts = self.prepare_opts(opts)
+
+        if opts["ready_ind_sol_BEM"] == False:
+            self._ready_ind_sol_BEM = False
+
+        if self._ready_ind_sol_BEM == True :
+            return self._ind_sol_BEM
         
-        # convert into umpy array
+        # convert into numpy array
         smnp = np.asarray(sm).astype(np.complex)
         lvnp = np.asarray(lv).reshape((len(lv),)).astype(np.complex)
         
         #
-        sol = scipy.linalg.solve(smnp,lvnp,assume_a="sym")
+        sol = scipy.linalg.solve(smnp,lvnp,assume_a="sym") #lo salvo su file
+        
+        out = pd.DataFrame(data=sol,index=sm.index,columns=["value"])
+     
+        self._ind_sol_BEM = out.copy()
+        self._ready_ind_sol_BEM = True
+        return out
+        
+    ###
+    def BEM(self,uinc,k,XY,opts=None):
+        
+        opts = self.prepare_opts(opts)
+
+        #if opts["ready_sol_BEM"] == False:
+        #    self._ready_sol_BEM = False
+
+        #if self._ready_sol_BEM == True :
+        #    return self._sol_BEM
+        
+        
+        #
+        sm = self.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
+        lv = self.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file
+        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file
+        
+        
+        #indirect solution
+        sol = self.indirect_solution_BEM(sm,lv,opts)
+        
+        
+        # convert into numpy array
+        #smnp = np.asarray(sm).astype(np.complex)
+        #lvnp = np.asarray(lv).reshape((len(lv),)).astype(np.complex)
+        
+        #
+        #sol = scipy.linalg.solve(smnp,lvnp,assume_a="sym") #lo salvo su file
         
         #
         slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k)
         
+        
+        #r = len(slp)
+        #c = len(slp["x"][0])
+
+        #Xnp = np.zeros(shape=(r,c))
+
+        #for i in range(r):
+        #    for j in range(c):
+        #        Xnp[i,j] = slp["x"][i][j]
+                
+        #
+        #Valnp = np.asarray(slp["value"],dtype=np.complex)
+        
         # convert into numpy array
-        r = len(slp)
-        c = len(slp["x"][0])
+        Xnp,Valnp = self.sol_to_np_BEM(slp)
+        
+        #self._sol_BEM = slp.copy()
+        #self._ready_sol_BEM = True
+        return slp,Xnp,Valnp
+    
+    ###
+    def sol_to_np_BEM(self,sol):
+        # convert into numpy array
+        r = len(sol)
+        c = len(sol["x"][0])
 
         Xnp = np.zeros(shape=(r,c))
 
         for i in range(r):
             for j in range(c):
-                Xnp[i,j] = slp["x"][i][j]
-                
+                Xnp[i,j] = sol["x"][i][j]
+
         #
-        Valnp = np.asarray(slp["value"])
-        
-        return slp,Xnp,Valnp
-            
+        Valnp = np.asarray(sol["value"],dtype=np.complex)
+        return Xnp,Valnp
+                    
     ###
     def save(self,variable,filename):
         if variable == "sm":
@@ -2004,6 +2110,12 @@ class Bspline :
             var = self._stiffness_matrix_BEM
         elif variable == "slp-BEM" :
             var = self._slp_matrix_BEM
+        elif variable == "lv-BEM" :
+            var = self._lv_BEM
+        elif variable == "ind_sol-BEM" :
+            var = self._ind_sol_BEM  
+        elif variable == "sol-BEM" :
+            var = self._sol_BEM  
         var.to_csv(filename,index_label="index")
         
     ###
@@ -2012,15 +2124,17 @@ class Bspline :
         var = pd.read_csv(filename)
                 
         #l eggo e preparo gli indici
-        int_index = ["sm","sm-BEM","om","cp"]
+        int_index = ["sm","sm-BEM","om","cp","ind_sol-BEM","lv-BEM"]
         if variable in int_index:
             var.index = [tuple_from_str(i) for i in var["index"] ]
             var = var.drop('index',axis=1)
+            
                 
         # leggo e preparo le colonne
         int_col = ["sm","sm-BEM","om"]
         if variable in int_col:
             var.columns = [tuple_from_str(i) for i in var.columns]
+        
         
         # leggo e preparo i valori
         if variable == "sm":  
@@ -2040,9 +2154,27 @@ class Bspline :
             var.index = [ tuple_float_from_str(i) for i in var["index"]]
             var = var.drop('index',axis=1)
             var.columns = [tuple_from_str(i) for i in var.columns]
-            #var = var.applymap(np.complex)
-            self._slp_matrix_BEM = var.applymap(np.complex)#.copy()
-            self._ready_slp_BEM = True    
+            var = var.applymap(np.complex)
+            self._slp_matrix_BEM = var.copy()
+            self._ready_slp_BEM = True   
+        
+        elif variable == "sol-BEM":
+            var.index = [ tuple_float_from_str(i) for i in var["index"]]
+            var["x"] = [ tuple_float_from_str(i) for i in var["x"]]
+            var = var.drop('index',axis=1)
+            var["value"] = [np.complex(i) for i in np.asarray(var["value"])]
+            self._sol_BEM = var.copy()
+            self._ready_sol_BEM = True   
+            Xnp,Valnp = self.sol_to_np_BEM(var)
+            return var,Xnp,Valnp
+        
+        elif variable == "ind_sol-BEM":
+            self._ind_sol_BEM = var.copy()
+            self._ready_ind_sol_BEM = True     
+            
+        elif variable == "lv-BEM":
+            self._lv_BEM = var.copy()
+            self._ready_lv_BEM = True     
                      
         elif variable == "cp" :
             var.columns = [ int(i) for i in var.columns ]
@@ -2051,6 +2183,8 @@ class Bspline :
                 for k in range(self.codim()):
                     self._cp[i,k] = var.at[i,k]
             #self._cp = var.copy()
+        
+        return var
 
 ###
 def norm(x):
@@ -2061,7 +2195,7 @@ def tuple_from_str(string,comand=r'[0-9]+'):
     return tuple(map(int, re.findall(comand, string)))
 
 ###
-def tuple_float_from_str(string,comand="\d+\.\d+"):
+def tuple_float_from_str(string,comand=r"[+-]?\d+(?:\.\d+)?\.[+-]?\d+(?:\.\d+)?"):
     return tuple(map(float, re.findall(comand, string)))
 
     
