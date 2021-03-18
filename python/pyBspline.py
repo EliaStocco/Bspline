@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[19]:
+# In[20]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -2033,46 +2033,17 @@ class Bspline :
         
         opts = self.prepare_opts(opts)
 
-        #if opts["ready_sol_BEM"] == False:
-        #    self._ready_sol_BEM = False
-
-        #if self._ready_sol_BEM == True :
-        #    return self._sol_BEM
-        
-        
         #
         sm = self.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
         lv = self.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file
-        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file
-        
+        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file        
         
         #indirect solution
         sol = self.indirect_solution_BEM(sm,lv,opts)
-        
-        
-        # convert into numpy array
-        #smnp = np.asarray(sm).astype(np.complex)
-        #lvnp = np.asarray(lv).reshape((len(lv),)).astype(np.complex)
-        
-        #
-        #sol = scipy.linalg.solve(smnp,lvnp,assume_a="sym") #lo salvo su file
-        
+              
         #
         slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k)
-        
-        
-        #r = len(slp)
-        #c = len(slp["x"][0])
-
-        #Xnp = np.zeros(shape=(r,c))
-
-        #for i in range(r):
-        #    for j in range(c):
-        #        Xnp[i,j] = slp["x"][i][j]
                 
-        #
-        #Valnp = np.asarray(slp["value"],dtype=np.complex)
-        
         # convert into numpy array
         Xnp,Valnp = self.sol_to_np_BEM(slp)
         
