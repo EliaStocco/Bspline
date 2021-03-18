@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[20]:
+# In[14]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[7]:
+# In[2]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[8]:
+# In[3]:
 
 
 import numpy as np
@@ -105,17 +105,24 @@ def uniform_open_kv(xmin,xmax,p,n):
 
 def periodic_kv(xmin,xmax,p,n):
     #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
-    #v0 = np.linspace(0.,1.0,n+p+1+p,endpoint=True)
+    v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
+    v = xmin + (v0 - v0[p])/v0[n+1]*(xmax-xmin)
+    return knot_vector(p,n+1+p,v,check_open=False) 
+
+    #v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
+    #v = xmin + (v0 - v0[p])/v0[n+1]*(xmax-xmin)
+    #return knot_vector(p,n+p+1,v,check_open=False) 
+    #v0 = np.linspace(0.,1.0,n+p+p,endpoint=True)
     #v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
-    #return knot_vector(p,n+p,v,check_open=False)  
-    v0 = np.linspace(0.,1.0,n+1+p,endpoint=True)
-    v = xmin + (v0 - v0[p])/v0[n-p]*(xmax-xmin)
-    return knot_vector(p,n,v,check_open=False)  
+    #return knot_vector(p,n+p+1,v,check_open=False)  
+    #v0 = np.linspace(0.,1.0,n+1+p,endpoint=True)
+    #v = xmin + (v0 - v0[p])/v0[n-p]*(xmax-xmin)
+    #return knot_vector(p,n,v,check_open=False)  
 
 
 # ## Bspline class
 
-# In[9]:
+# In[4]:
 
 
 import copy
@@ -456,9 +463,6 @@ class Bspline :
         #valuto la funzione
         #if der == False :
         return self._deBoor_private(k,x,t,c,p)
-        #valuto la derivata prima della funzione
-        #if der == True :
-        #    return self._deBoor_private_derivative(k,x,t,c,p)        
     
     ### https://en.wikipedia.org/wiki/De_Boor%27s_algorithm
     def _deBoor_private(self,k: int, x, t, c, p: int) :
@@ -1692,6 +1696,9 @@ class Bspline :
 
         if self._ready_sm_BEM == True :
             return self._stiffness_matrix_BEM
+        
+        if opts["print"] :
+            print("stiffness_matrix_BEM")
 
         conta = 1
         for k in range(0,self.dim()):
@@ -1750,6 +1757,8 @@ class Bspline :
         successful = False
         res =  np.complex(0,0)
         n = am.shape[0]
+        conta = 0
+        tot = int(n*(n+1)/2)
         for i in range(0,n):
 
             #
@@ -1774,6 +1783,9 @@ class Bspline :
             for j in range(i,n):
 
                 c = am.columns[j]
+                
+                if opts["print"] :
+                    print(conta,"/",tot,end="\r")
 
                 # LA MATRICE E' DENSA
                 #if am.at[r,c] is False :
@@ -1850,12 +1862,17 @@ class Bspline :
 
                 #cancello
                 right.set_cp(c,0.0)
+                
+                #incremento
+                conta = conta +1
 
                 #cancello
             left.set_cp(r,0.0)
             
         self._stiffness_matrix_BEM = out.copy()
         self._ready_sm_BEM = True
+        if opts["print"] :
+            print("Finished")
         return out
     
     ###
@@ -1958,12 +1975,14 @@ class Bspline :
             d = np.asarray([ norm(i)  for i in y-x0 ])
             return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0 
 
+        opts2= opts
+        opts2["ready_lv_BEM"] = False
         lenXY = len(XY)
         for i in range(lenXY):
             if opts["print"] :
                 print(i,"/",lenXY,end="\r")
             x0 = XY[i,:]
-            lvx0 = self.load_vector_BEM(foundamental_x,opts)
+            lvx0 = self.load_vector_BEM(foundamental_x,opts2)
             outnp[i] = lvx0["cp"]
         if opts["print"] :
             print("Finished")
