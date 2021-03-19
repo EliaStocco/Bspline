@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
+# In[4]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -122,7 +122,7 @@ def periodic_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[4]:
+# In[2]:
 
 
 import copy
@@ -1934,13 +1934,13 @@ class Bspline :
             for j in perindex :
                 #ii = self.get_periodic_index(i)
                 jp = self.get_periodic_index(j)
-                persm.at[i,j] = persm.at[i,j] + persm.at[i,jp]
+                persm.at[i,j] += persm.at[i,jp]
 
         for i in index:
             for j in perindex :
                 #ii = self.get_periodic_index(i)
                 jp = self.get_periodic_index(j)
-                persm.at[j,i] = persm.at[j,i] + persm.at[jp,i]
+                persm.at[j,i] += persm.at[jp,i]
                 #persm.at[j,i] = persm.at[i,j]
 
         for i in delindex:
@@ -1953,7 +1953,9 @@ class Bspline :
             self._ready_sm_BEM = True
         if opts["print"] :
             print("Finished")
-        return persm
+        if opts["return_both"]:
+            return persm,out
+        return persm,out
     
     ###
     def load_vector_BEM(self,gD=None,opts=None):
@@ -2043,6 +2045,8 @@ class Bspline :
         if opts["copy_lv_BEM"] == True :
             self._lv_BEM = persm.copy()
             self._ready_lv_BEM = True
+        if opts["return_both"]:
+            return persm,out
         return persm
     
     ###
@@ -2088,8 +2092,9 @@ class Bspline :
 
         out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=dof.index)#["x",il])
         
-        self._slp_matrix_BEM = out.copy()
-        self._ready_slp_BEM = True
+        if opts["copy_slp_BEM"] == True :
+            self._slp_matrix_BEM = out.copy()
+            self._ready_slp_BEM = True
         return out
     
     ###
@@ -2118,8 +2123,9 @@ class Bspline :
         out["x"] = [ tuple(i) for i in XY]
         out["value"] = outnp
         
-        self._sol_BEM = out.copy()
-        self._ready_sol_BEM = True
+        if opts["copy_sol_BEM"] == True :
+            self._sol_BEM = out.copy()
+            self._ready_sol_BEM = True
         return out
     
     ###
@@ -2189,7 +2195,7 @@ class Bspline :
         slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file        
                       
         #
-        slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k)
+        slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k,opts=opts)
                 
         # convert into numpy array
         Xnp,Valnp = self.sol_to_np_BEM(slp)
@@ -2287,10 +2293,12 @@ class Bspline :
             return var,Xnp,Valnp
         
         elif variable == "ind_sol-BEM":
+            var["value"] = [np.complex(i) for i in np.asarray(var["value"])]
             self._ind_sol_BEM = var.copy()
             self._ready_ind_sol_BEM = True     
             
         elif variable == "lv-BEM":
+            var["cp"] = [np.complex(i) for i in np.asarray(var["cp"])]
             self._lv_BEM = var.copy()
             self._ready_lv_BEM = True     
                      
