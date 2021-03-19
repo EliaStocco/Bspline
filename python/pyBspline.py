@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[5]:
+# In[3]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -1711,7 +1711,7 @@ class Bspline :
     #BEM
     
     ##
-    def stiffness_matrix_BEM(self,k,opts=None):
+    def stiffness_matrix_BEM(self,k=None,opts=None):
         
         opts = self.prepare_opts(opts)
         
@@ -1915,13 +1915,15 @@ class Bspline :
         #
         #il = self.index_list()
         #it = [tuple(i) for i in il ]
-        dof = self.periodicity()
-        per = dof.copy()
-        for i in it :
-            j = per.at[i,"periodic"]
-            #print(j)
-            if j is not None and i in dof.index :
-                dof.drop(j,inplace = True)
+        dof = self.dof()
+        
+        #self.periodicity()
+        #per = dof.copy()
+        #for i in it :
+        #    j = per.at[i,"periodic"]
+        #    #print(j)
+        #    if j is not None and i in dof.index :
+        #        dof.drop(j,inplace = True)
 
 
         persm = out.copy()
@@ -1954,7 +1956,7 @@ class Bspline :
         return persm
     
     ###
-    def load_vector_BEM(self,gD,opts=None):
+    def load_vector_BEM(self,gD=None,opts=None):
         
         opts = self.prepare_opts(opts)
         
@@ -2025,10 +2027,23 @@ class Bspline :
 
             scalar.set_cp(i,0.0)
             
+        # TENGO CONTO DELLA PERIODICITA'
+        dof = self.dof()
+        persm = out.copy()
+        delindex = [ i for i in out.index if i not in dof.index ]
+        perindex = [ self.get_periodic_index(i) for i in delindex  ]
+        index = out.index
+        for i in index:
+            ip = self.get_periodic_index(i)
+            persm.at[i,"cp"] += persm.at[ip,"cp"]
+        for i in delindex:
+            persm.drop(i,inplace=True,axis=0)
+
+            
         if opts["copy_lv_BEM"] == True :
-            self._lv_BEM =out.copy()
+            self._lv_BEM = persm.copy()
             self._ready_lv_BEM = True
-        return out
+        return persm
     
     ###
     def single_layer_potential_basis_BEM(self,XY=None,k=None,opts=None):
@@ -2045,9 +2060,10 @@ class Bspline :
         if self._ready_slp_BEM == True :
             return self._slp_matrix_BEM
         
-        il = self.index_list()
-        il = [ tuple(i) for i in il ]
-        outnp = np.zeros(shape=(len(XY),len(il)),dtype=object)
+        #il = self.index_list()
+        #il = [ tuple(i) for i in il ]
+        dof = self.dof()
+        outnp = np.zeros(shape=(len(XY),len(dof)),dtype=object)
 
         #giusto per definirlo
         x0 = XY[0,:]
@@ -2070,7 +2086,7 @@ class Bspline :
         if opts["print"] :
             print("Finished")
 
-        out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=il)#["x",il])
+        out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=dof.index)#["x",il])
         
         self._slp_matrix_BEM = out.copy()
         self._ready_slp_BEM = True
@@ -2160,18 +2176,18 @@ class Bspline :
         return out
         
     ###
-    def BEM(self,uinc,k,XY,opts=None):
+    def BEM(self,uinc=None,k=None,XY=None,opts=None):
         
         opts = self.prepare_opts(opts)
 
-        #
+        #indirect solution: Galerkin  method
         sm = self.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
-        lv = self.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file
-        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file        
-        
-        #indirect solution
+        lv = self.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file        
         sol = self.indirect_solution_BEM(sm,lv,opts)
-              
+        
+        #
+        slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file        
+                      
         #
         slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k)
                 
