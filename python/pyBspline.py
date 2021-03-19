@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[14]:
+# In[5]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -293,7 +293,7 @@ class Bspline :
     ###
     def periodicity(self):
         index = self.control_points().index
-        index = [ ii[0] for ii in index]
+        index = [ ii for ii in index]
         cp = pd.DataFrame(index = index,columns=["periodic"])
         cp["periodic"] = None
         for i in index:
@@ -326,10 +326,24 @@ class Bspline :
                 out[i] = j-n+p+1
             else :
                 out[i] = j
-        if self.dim() != 1 :
-            return tuple(out)
-        else :
-            return out[0]
+        #if self.dim() != 1 :
+        return tuple(out)
+        #else :
+        #    return out[0]
+        
+    ###
+    def dof(self):
+        il = self.index_list()
+        it = [tuple(i) for i in il ]
+        dof = self.periodicity()
+        per = dof.copy()
+        for i in it :
+            j = per.at[i,"periodic"]
+            #print(j)
+            if j is not None and i in dof.index :
+                dof.drop(j,inplace = True)
+        return dof
+    
     ### set control point value/coordinates
     def set_cp (self,index,value,check=True) :
         
@@ -729,7 +743,7 @@ class Bspline :
             kt = kv.knots()
             n  = kv.n()
             p  = kv.p() 
-            data = {"index":range(0,n),                   "i-min":range(0,n),                   "i-max":np.arange(0,n)+p+1,                   "x-min":kt[0:n],                   "x-max":kt[p+1:p+1+n]}
+            data = {"index":range(0,n),                   "i-min":range(0,n),                   "i-max":np.arange(0,n)+p+1,                   "x-min":[ max(i,kt[p]) for i in kt[0:n]],                   "x-max":[ min(i,kt[n-p+1]) for i in kt[p+1:p+1+n]] }
             br = pd.DataFrame(data)#np.array(shape=(n,3))
             basis_range.append(br)
 
@@ -806,20 +820,22 @@ class Bspline :
                 
         return am
     
-        if self.is_periodic() == False:
-            return am
-        else :
-            index = [ list(i)[0] for i in am.index]
-            new_index = [ self.get_periodic_index(i) for i in index ]
-            ni = [ tuple([i]) for i in new_index]
-
-            #adjacency matrix of periodic control points
-            ams = am.copy()
-            ams.index = ni
-            ams.reindex(am.index,axis=0)
-            out = ams+am
-            out = out.astype(bool)
-            return out
+        #if self.is_periodic() == False:
+        #    return am
+        #else :
+        #    index = [ list(i)[0] for i in am.index]
+        #    #new_index = [ self.get_periodic_index(i) for i in index ]
+        #    #ni = [ tuple([i]) for i in new_index]
+        #    
+        #    ni = [ self.get_periodic_index(i) for i in index ]
+        #
+        #    #adjacency matrix of periodic control points
+        #    ams = am.copy()
+        #    ams.index = ni
+        #    ams.reindex(am.index,axis=0)
+        #    out = ams+am
+        #    out = out.astype(bool)
+        #    return out
     
     ### da rivedere
     def basis_max_min(self,r,br=None):
@@ -979,30 +995,38 @@ class Bspline :
             opts["print"] = False
         if "delta" not in opts :
             opts["delta"] = np.full((self.dim(),),4)
-        if "norm" not in opts :
-            opts["norm"] = "L1"
-        if "del-edge" not in opts :
-            opts["del-edge"] = True
+        #if "norm" not in opts :
+        #    opts["norm"] = "L1"
+            
+        #if "del-edge" not in opts :
+        #    opts["del-edge"] = True
         if opts2 is not None :
             opts.update(opts2)
-        if "ready_om" not in opts :
-            opts["ready_om"] = True
-        if "ready_sm" not in opts :
-            opts["ready_sm"] = True
+        #if "ready_om" not in opts :
+        #    opts["ready_om"] = True
+        #if "ready_sm" not in opts :
+        #    opts["ready_sm"] = True
             
-        if "ready_sm_BEM" not in opts :
-            opts["ready_sm_BEM"] = True
-        if "ready_slp_BEM" not in opts :
-            opts["ready_slp_BEM"] = True
-        if "ready_sol_BEM" not in opts :
-            opts["ready_sol_BEM"] = True   
-        if "ready_ind_sol_BEM" not in opts :
-            opts["ready_ind_sol_BEM"] = True   
-        if "ready_lv_BEM" not in opts :
-            opts["ready_lv_BEM"] = True   
+        #if "ready_sm_BEM" not in opts :
+        #    opts["ready_sm_BEM"] = True
+        #if "ready_slp_BEM" not in opts :
+        #    opts["ready_slp_BEM"] = True
+        #if "ready_sol_BEM" not in opts :
+        #    opts["ready_sol_BEM"] = True   
+        #if "ready_ind_sol_BEM" not in opts :
+        #    opts["ready_ind_sol_BEM"] = True   
+        #if "ready_lv_BEM" not in opts :
+        #    opts["ready_lv_BEM"] = True   
+        
+        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                  "copy_ind_sol_BEM","copy_lv_BEM",                  "interpolation",                  "del-edge","ready_om","ready_sm"]
+        
+        for v in varTrue :            
+            if v not in opts :
+                opts[v] = True
             
-        if "interpolation" not in opts:
-            opts["interpolation"] = True
+            
+        #if "interpolation" not in opts:
+        #    opts["interpolation"] = True
         #if "ready_lv" not in opts :
         #    opts["ready_lv"] = False
         if "ready_trace" not in opts :
@@ -1690,12 +1714,15 @@ class Bspline :
     def stiffness_matrix_BEM(self,k,opts=None):
         
         opts = self.prepare_opts(opts)
-
-        if opts["ready_sm_BEM"] == False:
-            self._ready_sm_BEM = False
-
-        if self._ready_sm_BEM == True :
+        
+        if opts["ready_sm_BEM"] == True and self._ready_sm_BEM == True :
             return self._stiffness_matrix_BEM
+
+        #if opts["ready_sm_BEM"] == False:
+        #    self._ready_sm_BEM = False
+
+        #if self._ready_sm_BEM == True :
+        #    return self._stiffness_matrix_BEM
         
         if opts["print"] :
             print("stiffness_matrix_BEM")
@@ -1714,7 +1741,9 @@ class Bspline :
         Y = X.copy()        
 
         #a djacency matrix
-        am = self.adjacency_matrix()
+        #am = self.adjacency_matrix()
+        il = self.index_list()
+        it = [ tuple(i) for i in il ]
         # basis range
         br = self.basis_range()
         # derivative
@@ -1731,7 +1760,7 @@ class Bspline :
         del scalar
 
         # out variable
-        out = pd.DataFrame(0.0,index=am.index,columns=am.columns,dtype=np.complex)
+        out = pd.DataFrame(0.0,index=it,columns=it,dtype=np.complex)
 
         # unità immaginaria
         I = np.complex(0,1)
@@ -1753,16 +1782,17 @@ class Bspline :
             return f*d*l*dl*dr
 
 
-        #
+        ###
+        # CICLO
         successful = False
         res =  np.complex(0,0)
-        n = am.shape[0]
+        n = len(it)#am.shape[0]
         conta = 0
         tot = int(n*(n+1)/2)
         for i in range(0,n):
 
             #
-            r = am.index[i] 
+            r = it[i]#am.index[i] 
             left.set_cp(r,1.0)
             der_left  = left.derivative()
 
@@ -1773,16 +1803,16 @@ class Bspline :
                 xmax = br.at[r,("max",k)]
                 delta = xmax-xmin
                 punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                punti  = np.delete(punti0,0)
-                numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
+                puntiX  = np.delete(punti0,0)
+                #numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
                 #numradY = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
-                X[k] = punti+numradX
+                #X[k] = punti+numradX
                 areaX = areaX*delta
                 #Y[k] = punti+numradY
 
             for j in range(i,n):
 
-                c = am.columns[j]
+                c = it[j]#am.columns[j]
                 
                 if opts["print"] :
                     print(conta,"/",tot,end="\r")
@@ -1802,23 +1832,29 @@ class Bspline :
                 # considerare i range di entrambe le funzioni di base
                 # provare a calcolare X e Y all'inizio di tutto quanto
                 
+                
+                # questi sono da modificare  
+                areaY = 1.0
+                for k in range(0,self.dim()):
+                    # ATTENZIONE ALLA DERIVATA LOGARITMICA
+                    xmin = br.at[c,("min",k)]
+                    xmax = br.at[c,("max",k)]
+                    delta = xmax-xmin
+                    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+                    puntiY  = np.delete(punti0,0)
+                    areaY = areaY*delta
+                 
+                
                 successful = False
                 while not successful :
-
-                    # questi sono da modificare  
-                    areaY = 1.0
+                    
                     for k in range(0,self.dim()):
                         # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                        xmin = br.at[c,("min",k)]
-                        xmax = br.at[c,("max",k)]
-                        delta = xmax-xmin
-                        punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                        punti  = np.delete(punti0,0)
-                        #umradX = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
-                        numradY = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
-                        #X[k] = punti+numradX
-                        Y[k] = punti+numradY
-                        areaY = areaY*delta
+                        numradX = (0.5-random.rand(len(puntiX)))*delta/(opts["delta"][k]+2)
+                        numradY = (0.5-random.rand(len(puntiY)))*delta/(opts["delta"][k]+2)
+                        X[k] = puntiX+numradX
+                        Y[k] = puntiY+numradY                     
+                    
 
                     # devo usare np.meshgrid
                     mX = np.meshgrid(*X)
@@ -1838,9 +1874,11 @@ class Bspline :
                             k = n1*i+j
                             mesh[k,0] = Xintegration[i]
                             mesh[k,1] = Yintegration[j]
-                    mesh = mesh [ mesh[:,0] != mesh[:,1]  ]
+                    # piccola modifica
+                    #mesh = mesh [ mesh[:,0] != mesh[:,1]  ]
 
-                    if self.codim() == 1:
+                    # piccola modifica
+                    if self.dim() == 1:
                         mesh = mesh.astype(float)
 
                     ###
@@ -1848,14 +1886,17 @@ class Bspline :
 
                     y = integrate(mesh)
                     res = np.mean(y)*areaX*areaY
+                    
+                    #
+                    successful = not np.isnan(res)
+                    
+                    if not successful :
+                        print("found nan value for [",r,",",c,"]: repeating the cycle")
 
                     ###
                     # FINE
                     
-                    successful = not np.isnan(res)
-                    
-                    if not successful :
-                        print("found nan value: repeating the cycle")
+                   
                 #    
                 out.at[r,c] = res
                 out.at[c,r] = res #matrice simmetrica
@@ -1868,23 +1909,63 @@ class Bspline :
 
                 #cancello
             left.set_cp(r,0.0)
-            
-        self._stiffness_matrix_BEM = out.copy()
-        self._ready_sm_BEM = True
+         
+        # TENGO CONTO DELLA PERIODICITA'
+        # le funzioni di base non corrispondono ai control points
+        #
+        #il = self.index_list()
+        #it = [tuple(i) for i in il ]
+        dof = self.periodicity()
+        per = dof.copy()
+        for i in it :
+            j = per.at[i,"periodic"]
+            #print(j)
+            if j is not None and i in dof.index :
+                dof.drop(j,inplace = True)
+
+
+        persm = out.copy()
+        delindex = [ i for i in out.index if i not in dof.index ]
+        perindex = [ self.get_periodic_index(i) for i in delindex  ]
+        index = out.index
+        for i in index:
+            for j in perindex :
+                #ii = self.get_periodic_index(i)
+                jp = self.get_periodic_index(j)
+                persm.at[i,j] = persm.at[i,j] + persm.at[i,jp]
+
+        for i in index:
+            for j in perindex :
+                #ii = self.get_periodic_index(i)
+                jp = self.get_periodic_index(j)
+                persm.at[j,i] = persm.at[j,i] + persm.at[jp,i]
+                #persm.at[j,i] = persm.at[i,j]
+
+        for i in delindex:
+            persm.drop(i,inplace=True,axis=0)
+            persm.drop(i,inplace=True,axis=1)
+                    
+        #    
+        if opts["copy_sm_BEM"] == True :
+            self._stiffness_matrix_BEM = persm.copy()
+            self._ready_sm_BEM = True
         if opts["print"] :
             print("Finished")
-        return out
+        return persm
     
     ###
     def load_vector_BEM(self,gD,opts=None):
         
         opts = self.prepare_opts(opts)
         
-        if opts["ready_lv_BEM"] == False:
-            self._ready_lv_BEM = False
-
-        if self._ready_lv_BEM == True :
+        if opts["ready_lv_BEM"] == True and self._ready_lv_BEM == True :
             return self._lv_BEM
+            
+        #if opts["ready_lv_BEM"] == False:
+        #    self._ready_lv_BEM = False
+
+        #if self._ready_lv_BEM == True :
+        #    return self._lv_BEM
         
         #edge = self.edge()
 
@@ -1944,8 +2025,9 @@ class Bspline :
 
             scalar.set_cp(i,0.0)
             
-        self._lv_BEM =out.copy()
-        self._ready_lv_BEM = True
+        if opts["copy_lv_BEM"] == True :
+            self._lv_BEM =out.copy()
+            self._ready_lv_BEM = True
         return out
     
     ###
@@ -1975,8 +2057,9 @@ class Bspline :
             d = np.asarray([ norm(i)  for i in y-x0 ])
             return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0 
 
-        opts2= opts
+        opts2 = opts
         opts2["ready_lv_BEM"] = False
+        opts2["copy_lv_BEM"] = False
         lenXY = len(XY)
         for i in range(lenXY):
             if opts["print"] :
@@ -2045,6 +2128,35 @@ class Bspline :
      
         self._ind_sol_BEM = out.copy()
         self._ready_ind_sol_BEM = True
+        return out
+    
+    ###
+    def internal_points(self,XY,NN,xmin,xmax,opts):
+        
+        t = np.linspace(xmin,xmax,NN,endpoint=True)
+        xy   = self.evaluate(t)
+        area = max(t)-min(t)
+
+        def to_complex(xy):
+            return np.asarray([ np.complex(i[0],i[1]) for i in xy ])
+
+        z = to_complex(xy)
+        der = self.derivative()
+        d = der.evaluate(t)
+        jac = to_complex(d)#np.asarray([np.sqrt(np.sum(np.power(i,2.0))) for i in d ])
+
+        I = np.complex(0,1)
+
+        x0 = to_complex(XY)
+        wn = np.zeros(x0.shape,dtype=np.complex)
+
+        for i in range(len(x0)):
+            delta = z-x0[i]
+            integrand = jac /delta * area
+            wn[i] = np.mean(integrand)/(2*np.pi*I)
+            
+        absolute = np.absolute(wn)
+        out = absolute > 0.5
         return out
         
     ###
@@ -2132,8 +2244,8 @@ class Bspline :
             self._ready_sm = True     
                 
         elif variable == "sm-BEM":
-            #var = var.applymap(np.complex)
-            self._stiffness_matrix_BEM = var.applymap(np.complex)#copy()
+            var = var.applymap(np.complex)
+            self._stiffness_matrix_BEM = var.copy()
             self._ready_sm_BEM = True 
                            
         elif variable == "om":
@@ -2198,60 +2310,6 @@ def overlaps(a, b):
     else :
         return c
 
-
-# ### Derivative
-
-# $\mathbf{r}\left(t\right) = \sum_{k=0}^{n} \mathbf{P}_k N^{p}_{k}\left(t\right)$
-# 
-# $\dfrac{ \partial \mathbf{r}}{\partial t} =\sum_{k=0}^{n} \mathbf{P}_k \frac{ \partial  N^{p}_{k}\left(t\right) }{\partial t}$
-# 
-# $ N^{p}_{k}\left(t\right) = \dfrac{t - u_k}{u_{k+p}-u_{k}} N^{p-1}_{k}\left(t\right) - \dfrac{t - u_{k+p+1}}{u_{k+p+1}-u_{k+1}} N^{p-1}_{k+1}\left(t\right) $
-# 
-# Se $p=1$ otteniamo
-# $\dfrac{ \partial  N^{p}_{k}\left(t\right) }{\partial t} = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}}  \right] $
-# 
-# Procediamo per induzione (tenendo conto che passiamo da polinomi di grado $p$ a polinomi di grado $p-1$ e che stiamo togliendo il primo e ultimo elemento del knot vector)
-# 
-# $\dfrac{ \partial  N^{p}_{k} }{\partial t} =  %
-# \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} + %
-# \dfrac{t-u_k}{u_{k+p}-u_k}\dfrac{ \partial  N^{p-1}_{k} }{\partial t} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} - %
-# \dfrac{t-u_{k+1}}{u_{k+p+1}-u_{k+1}}\dfrac{ \partial  N^{p-1}_{k+1}}{\partial t}  \\%
-# = \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} + %
-# \dfrac{\left(t-u_k\right)\left(p-1\right)}{u_{k+p}-u_k} \left[ \dfrac{N^{p-2}_{k}}{u_{k+p}-u_{k}}  - \dfrac{N^{p-2}_{k+1}}{u_{k+p+1}-u_{k+1}} \right] - %
-# \dfrac{\left(t-u_{k+1}\right)\left(p-1\right)}{u_{k+p+1}-u_{k+1}} \left[ \dfrac{N^{p-2}_{k+1}}{u_{k+p+1}-u_{k+1}}  - \dfrac{N^{p-2}_{k+2}}{u_{k+p+2}-u_{k+2}} \right] \\
-# = \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} + %
-# \dfrac{\left(p-1\right)}{u_{k+p}-u_k} N^{p-1}_{k} -%
-# \dfrac{\left(p-1\right)}{u_{k+p+1}-u_{k+1}}N^{p-1}_{k+1} \\
-# = p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} \right]$
-# 
-# dunque
-# 
-# $\dfrac{ \partial \mathbf{r}}{\partial t} = %
-# \sum_{k=0}^{n} \mathbf{P}_k p \left[ \dfrac{N^{p-1}_{k}}{u_{k+p}-u_k} - %
-# \dfrac{N^{p-1}_{k+1}}{u_{k+p+1}-u_{k+1}} \right]  \\
-# = \sum_{k=0}^{n-1} N^{p-1}_{k+1} \left[ p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}}\right] \\
-# = \sum_{k=0}^{n-1} N^{p-1}_{k} \mathbf{Q}_{k} $
-# 
-# poiché $N^{p-1}_{k+1}$ valutato sul knot vector originale è uguale a $N^{p-1}_{k}$ valutato sul nuovo (open) knot vector.
-# Abbiamo definito
-# 
-# $\mathbf{Q}_{k} = p \dfrac{\mathbf{P}_{k+1} - \mathbf{P}_{k}}{u_{k+p+1}-u_{k+1}} $
-
-# ### Surface Bspline
-
-# $\mathbf{r}\left(x,y\right) = \sum_{i=0}^{n}\sum_{j=0}^{m} \mathbf{P}_{ij} N^{p}_{i}\left(x\right) M^{q}_{j}\left(y\right) \\
-# = \sum_{i=0}^{n} N^{p}_{i}\left(x\right) \left( \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) \right)  \\ 
-# = \sum_{i=0}^{n} N^{p}_{i}\left(x\right) \mathbf{Q}_{i}\left(y\right)$
-# 
-# con 
-# 
-# $ \sum_{j=0}^{m} \mathbf{P}_{ij} M^{q}_{j}\left(y\right) = \mathbf{Q}_{i}\left(y\right) $
-
-# ## Galerkin method
 
 # 
 # 
