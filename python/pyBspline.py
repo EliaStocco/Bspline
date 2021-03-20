@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[4]:
+# In[35]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[2]:
+# In[22]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[3]:
+# In[23]:
 
 
 import numpy as np
@@ -88,8 +88,16 @@ class knot_vector:
         return True
     
     ###
-    def xmin(self): return min(self._vect)
-    def xmax(self): return max(self._vect)
+    def xmin(self): 
+        p = self.p()
+        #n = self.n()
+        t = self.knots()
+        return t[p]#min(self._vect)
+    def xmax(self): 
+        p = self.p()
+        n = self.n()
+        t = self.knots()
+        return t[n-1]#max(self._vect)
                        
     ###
     def __len__(self): return len(self.knots())
@@ -106,8 +114,14 @@ def uniform_open_kv(xmin,xmax,p,n):
 def periodic_kv(xmin,xmax,p,n):
     #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
     v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
-    v = xmin + (v0 - v0[p])/v0[n+1]*(xmax-xmin)
+    v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
     return knot_vector(p,n+1+p,v,check_open=False) 
+
+    # if xmin = 0. and xmax = 1.
+    # kv.knots()[P]   = 0.
+    # kv.knots()[N+P] = 1.
+    # bs.evaluate(0.) == bs.evaluate(1.)
+
 
     #v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
     #v = xmin + (v0 - v0[p])/v0[n+1]*(xmax-xmin)
@@ -122,7 +136,7 @@ def periodic_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[2]:
+# In[24]:
 
 
 import copy
@@ -145,20 +159,43 @@ class Bspline :
                  sh    = shape(),
                  knots = np.zeros(shape=(0,1),dtype=object),
                  cp    = None ,
-                 prt   =  False,
-                 properties = {"periodic":None,"dtype":float}
+                 properties = None
                 ):
+        
+        #proprietà
+        prop = {"periodic":False,"dtype":float}
+        if properties is None :
+            properties = prop
+        for p in prop:
+            if p not in properties:
+                properties[p] = prop[p]
+        self.properties = properties
+        del prop
+        del properties
+        
+        
+        if self.properties["periodic"] is None :
+            self.properties["periodic"] = np.full(sh.dim(),False,dtype=bool)
+        #if self.dim() == 1:
+        #    self.properties["periodic"][0] = properties["periodic"]
+        elif len(self.properties["periodic"]) != sh.dim():
+            print("Error : periodic array of wrong lenght")
+            raise Exception()  
+        #else :
+        #    self.properties["periodic"] = properties["periodic"]
+     
+    
+
         
         # making sure knots is a np.ndarray
         #knots = np.asarray([knots])
         # call init_knot
-        self  = self.init_knot(sh,knots,periodic)
+        self  = self.init_knot(sh,knots)
         
         # decido se stampare a schermo tutto 
-        self._print = prt
+        #self._print = prt
         
-        #tipo di variabile
-        self.properties = properties
+        
         #self.properties["dtype"] = dtype
            
         #check control points dimension
@@ -174,29 +211,18 @@ class Bspline :
                 print ("Control points error : wrong dimensions")
                 raise Exception()        
     ### function called by __init__
-    def init_knot(self,sh,knots,periodic):
+    def init_knot(self,sh,knots):
         
         # assign value to class members
         #dim    = sh.dim()        
         self._sh = sh
-        
-        self._periodic = np.full(sh.dim(),False,dtype=bool)
-        if periodic is None :
-            periodic = self._periodic
-        if self.dim() == 1:
-            self._periodic[0] = periodic
-        elif len(periodic) != sh.dim():
-            print("Error : periodic array of wrong lenght")
-            raise Exception()  
-        else :
-            self._periodic = periodic
-        
+       
         #check dimension
         if len(knots) > sh.dim() :
             print("Warning : knots lenght too long")
         elif len(knots) < sh.dim() :
             print("Error : knots lenght too short")
-            raise Exception()          flo  
+            raise Exception() 
          
         #copy knot vectors
         self._kv = knots[0:sh.dim()]
@@ -238,7 +264,7 @@ class Bspline :
         self._cp = np.zeros(shape=tuple(map(int,init)),dtype=object)
         self._cp.fill(self.Type_out())
         if self.codim() == 1 :
-            self._cp = self._cp.astype(self.dtype)
+            self._cp = self._cp.astype(self.properties["dtype"])
         
         #
         self._stiffness_matrix = None
@@ -275,7 +301,7 @@ class Bspline :
         #    return 0.
         #else :
         #tenere così
-        return np.zeros(self._sh.codim(),dtype=float)
+        return np.zeros(self._sh.codim(),dtype=self.properties["dtype"])
     #def Type_in  (self) : #da rifare
     #    return np.zeros(shape=(self._sh.dim(),1))
     def Index_t  (self) : #ok
@@ -292,7 +318,7 @@ class Bspline :
     
     ###
     def is_periodic(self):
-        return np.any(self._periodic)
+        return np.any(self.properties["periodic"])
     
     ###
     def periodicity(self):
@@ -351,9 +377,9 @@ class Bspline :
     ### set control point value/coordinates
     def set_cp (self,index,value,check=True) :
         
-        if self.codim() > 1 :
-            value = np.asarray(value)
-            value.reshape((self.codim(),1))
+        #if self.codim() > 1 :
+        #    value = np.asarray(value).reshape((self.codim(),1))
+            #value
             
         if self.dim() != 1 :
             ti = tuple(index)
@@ -400,7 +426,7 @@ class Bspline :
         cp = np.zeros(self._cp.shape,dtype=object)#,np.zeros(bs.codim()))
         cp.fill(np.zeros(self.codim()))
         if self.codim() == 1 :
-            cp = cp.astype(float)
+            cp = cp.astype(self.properties["dtype"])
         self._cp = cp#np.full(self._cp.shape,np.full(self.codim(),0)).astype(float)
         self._ready_sm = False
         self._ready_om = False
@@ -413,6 +439,11 @@ class Bspline :
     def show(self,what="all"):
         
         print("--------------------")
+        if what == "all" or "properties" in what : 
+            print(self.properties)
+            print("\n--------------------")
+        
+        #print("--------------------")
         
         #shape
         if what == "all" or "shape" in what :            
@@ -453,12 +484,12 @@ class Bspline :
         #    output = -2
         return output
     ###
-    def _deBoor(self,x,der=False):
+    def _deBoor(self,x):
         
         #
         if len(self._kv) > 1 :
-            if self._print == True :
-                print("deBoor error : knot vector size > 1")
+            #if self.properties["print"] == True :
+            print("deBoor error : knot vector size > 1")
             raise Exception()
             
         #
@@ -470,8 +501,8 @@ class Bspline :
         k = self._find_k(x,t)                
         #print("k:",k)
         if k < 0 :
-            if self._print == True :
-                print("deBoor error : k<0")
+            #if self.properties["print"] == True :
+            print("deBoor warning : k<0")
             #if k == -1 :
             return self.Type_out()
             #elif k == -2 :
@@ -507,7 +538,7 @@ class Bspline :
                     alpha = (x - t[left]) / (t[right] - t[left])                    
                     d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
 
-        return d[p]
+        return d[p]#.reshape(len(d[p],))
     ### https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/surface/bspline-de-boor.html
     def _iterative_deBoor(self,x) :
         
@@ -520,7 +551,7 @@ class Bspline :
         curve_knot = self.knots_vectors()[1:]
         sub_kv     = self.get_knots_vector(0)
         new_sh     = shape(dim=self.dim()-1,codim=self.codim())        
-        curve      = Bspline(new_sh,curve_knot,dtype=self.dtype,periodic=self._periodic)
+        curve      = Bspline(new_sh,curve_knot,properties=self.properties)
         
         #
         m  = self.get_knots_vector(0).n()     
@@ -546,47 +577,38 @@ class Bspline :
         
         #print("surface_cp : ",surface_cp)            
         out_sh = shape(dim=1,codim=self.codim())        
-        return Bspline(out_sh,[sub_kv],surface_cp,dtype=self.dtype,periodic=self._periodic)    
+        return Bspline(out_sh,[sub_kv],surface_cp,properties=self.properties)    
     ###
     def evaluate(self,x):
-        #sistemo dimensioni di x
-        #if self._codim() > 1 :        
+        
         X = self._correct_type_and_shape(x)
-        #else :
-        #    x = [X]
-            
-        #print("evaluate at :",X)
         if len(X) == 1 :
             x = X[0]
-            #print("one x value passed : ",X," -> ",x)            
-            # ho passato solo un valore
             if self.dim() == 1 :                
                 out = self._deBoor(x)
-                #print("dim == 1, out : ", out) 
-                #return self._deBoor(x)
-            else :
-                #print("dim : ",self.dim())    
+            else :  
                 curve_final = self._iterative_deBoor(x)
-                #print("curve_final : ")
-                #curve_final.show()
                 out = curve_final._deBoor(x[0])
-                #out = curve_final._deBoor(x[0])
-                #print("dim >= 1, out : ", out) 
-                #return curve_final._deBoor(x[0])
             if self.codim() == 1 :
-                out = float(out)
+                out = out[0]
             return out
         else :
             #print("x vector of lenght ",len(X)," passed")
             #if self.codim() == 1 :
             #    out = [float(self.evaluate(j)) for j in X ]
             #else :
-            out = [ self.evaluate(j) for j in X ]
+            if self.dim() == 1 :     
+                out = np.asarray([self._deBoor(x) for x in X ])
+            else :
+                out = np.asarray([ self._iterative_deBoor(x)._deBoor(x[0]) for x in X])
+            
             #if self.codim() > 1 :
             out = np.asarray(out)
             if self.codim() == 1 :
-                out = out.reshape((len(out,)))
+                out = out.astype(self.properties["dtype"]).reshape((len(out,)))
+                #out = out.reshape((len(out,)))
             return out
+        
     ### da rivedere
     def derivative(self,axis=-1):        
         
@@ -616,7 +638,7 @@ class Bspline :
                 else :     
                     der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1],check_open=False))         
             #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
-            derK = Bspline(der_sh,der_kv,periodic=self._periodic)
+            derK = Bspline(der_sh,der_kv,properties=self.properties)
 
             #
             KV     = self._kv[K]
@@ -747,7 +769,7 @@ class Bspline :
             kt = kv.knots()
             n  = kv.n()
             p  = kv.p() 
-            data = {"index":range(0,n),                   "i-min":range(0,n),                   "i-max":np.arange(0,n)+p+1,                   "x-min":[ max(i,kt[p]) for i in kt[0:n]],                   "x-max":[ min(i,kt[n-p+1]) for i in kt[p+1:p+1+n]] }
+            data = {"index":range(0,n),                    "i-min":range(0,n),                    "i-max":np.arange(0,n)+p+1,                    "x-min":[ max(i,kv.xmin()) for i in kt[0:n]],                    "x-max":[ min(i,kv.xmax()) for i in kt[p+1:p+1+n]] }
             br = pd.DataFrame(data)#np.array(shape=(n,3))
             basis_range.append(br)
 
@@ -782,6 +804,13 @@ class Bspline :
         
         df["ii"] = it
         df.set_index("ii",inplace=True)
+        
+        df["area"] = np.zeros(len(df))
+        for i in df.index :
+            area = 1.0
+            for k in range(self.dim()):
+                area = area * ( df.at[i,("max",k)] - df.at[i,("min",k)] )
+            df.at[i,"area"] = area
         
         return df #basis_range,df
     
@@ -906,7 +935,7 @@ class Bspline :
         #if opts["print"] == True : print("\ndimension :",k)
         #d = der[k]
         #d.clear_cp()
-        scalar = self._scalar()
+        scalar = self._scalar(opts)
         left   = scalar.copy()
         right  = scalar.copy()
         left.clear_cp()
@@ -1024,7 +1053,7 @@ class Bspline :
         #if "ready_lv_BEM" not in opts :
         #    opts["ready_lv_BEM"] = True   
         
-        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                  "copy_ind_sol_BEM","copy_lv_BEM",                  "interpolation",                  "del-edge","ready_om","ready_sm"]
+        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                   "copy_ind_sol_BEM","copy_lv_BEM",                   "interpolation",                   "del-edge","ready_om","ready_sm"]
         
         for v in varTrue :            
             if v not in opts :
@@ -1110,7 +1139,7 @@ class Bspline :
             #load vector
             lvnp = np.asarray(lv)
             #punti di bordo
-            gDnp = np.asarray(gDv,dtype=self.dtype)
+            gDnp = np.asarray(gDv,dtype=self.properties["dtype"])
             #prodotto righe per colonne
             edlv = np.dot(denp,gDnp)
 
@@ -1257,10 +1286,10 @@ class Bspline :
         return self.control_points()
     
     ##
-    def _scalar(self):#restituisce la stessa Bspline ma con cp scalari
+    def _scalar(self,opts=None):#restituisce la stessa Bspline ma con cp scalari
         sh = shape(dim=self.dim(),codim=1)
         kv = self._kv        
-        return Bspline(sh,kv,periodic=self._periodic)#cp: default value
+        return Bspline(sh,kv,properties=self.properties)#cp: default value
     
     ###
     def get_gD_shape(self):
@@ -1290,8 +1319,9 @@ class Bspline :
         
         new_sh = shape(dim=self.dim()-1,codim=self.codim())        
         kv     = [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != n ]  
-        per    = self._periodic.copy().drop(n)
-        curve  = Bspline(new_sh,kv,periodic=per)
+        prop    = self.properties.copy()#.drop(n)
+        prop["periodic"] = prop["periodic"].drop(n)
+        curve  = Bspline(new_sh,kv,properties=prop)
         
         self._ready_trace[n] = True
         self._trace_Bspline[n] = curve.copy()
@@ -1398,7 +1428,7 @@ class Bspline :
         #load vector
         lvnp = np.asarray(lv)
         #punti di bordo
-        gDnp = np.asarray(gDv,dtype=self.dtype)
+        gDnp = np.asarray(gDv,dtype=self.properties["dtype"])
         #prodotto righe per colonne
         edlv = np.dot(denp,gDnp)
         
@@ -1425,7 +1455,7 @@ class Bspline :
             out.iloc[out.index == j] = gDnp[i]
         #
         if self.codim() == 1 :
-            self._cp = self._cp.astype(self.dtype)
+            self._cp = self._cp.astype(self.properties["dtype"])
         return out      
     
     ###
@@ -1634,7 +1664,7 @@ class Bspline :
         il = [ tuple(i) for i in il ]
         #else :
         #    il = [ int(i) for i in il ]
-        scalar = self._scalar()
+        scalar = self._scalar(opts)
         scalar.clear_cp()
         #piccola modifica : self -> scalar
         out = pd.DataFrame(columns=["index","cp"],dtype=object)
@@ -1655,7 +1685,7 @@ class Bspline :
         def integrate_1D(xx):
             A = scalar.evaluate(xx)
             B = func(xx)
-            return [ float(a*b) for a,b in zip(A,B) ] 
+            return [ self.properties["dtype"](a*b) for a,b in zip(A,B) ] 
 
         if self.codim() == 1 :
             integrate = integrate_1D
@@ -1738,6 +1768,8 @@ class Bspline :
             conta = conta * opts["delta"][k]
         Xintegration = np.zeros(shape=(conta,self.dim()))
         Yintegration = Xintegration.copy()
+        lenX = len(Xintegration)
+        lenXY = lenX*lenX
         del conta
 
         #X = np.full(self.dim(),0.0,dtype=object)
@@ -1755,7 +1787,7 @@ class Bspline :
         # derivative
         der = self.derivative()
         # basis function: left 
-        scalar = self._scalar()
+        scalar = self._scalar(opts)
         # basis function: right 
         left   = scalar.copy()
         left.clear_cp()
@@ -1781,8 +1813,8 @@ class Bspline :
             r = right.evaluate(y)#.conjugate()
             dl = [ norm(i) for i in der.evaluate(x) ]
             dr = [ norm(i) for i in der.evaluate(y) ]
-            xx = self.evaluate(x).astype(self.dtype)
-            yy = self.evaluate(y).astype(self.dtype)
+            xx = self.evaluate(x).astype(self.properties["dtype"])
+            yy = self.evaluate(y).astype(self.properties["dtype"])
             d = np.asarray([ norm(i) for i in xx-yy ])
             f = foundamental(d)
             return f*d*l*dl*dr
@@ -1795,34 +1827,48 @@ class Bspline :
         n = len(it)#am.shape[0]
         conta = 0
         tot = int(n*(n+1)/2)
+        area = br["area"]
         for i in range(0,n):
 
             #
             r = it[i]#am.index[i] 
+            
+            #
+            areaX = area[r]
+            if areaX == 0.0 :
+                continue                    
+                    
+            #
             left.set_cp(r,1.0)
             der_left  = left.derivative()
 
-            areaX = 1.0
-            for k in range(0,self.dim()):
-                # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                xmin = br.at[r,("min",k)]
-                xmax = br.at[r,("max",k)]
-                delta = xmax-xmin
-                punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                puntiX  = np.delete(punti0,0)
-                #numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
-                #numradY = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
-                #X[k] = punti+numradX
-                areaX = areaX*delta
-                #Y[k] = punti+numradY
+            #
+            #for k in range(0,self.dim()):
+            #    # ATTENZIONE ALLA DERIVATA LOGARITMICA
+            #    xmin = br.at[r,("min",k)]
+            #    xmax = br.at[r,("max",k)]
+            #    delta = xmax-xmin
+            #    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+            #    puntiX  = np.delete(punti0,0)
+            #    #numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
+            #    #numradY = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
+            #    #X[k] = punti+numradX
+            #    #areaX = areaX*delta
+            #    #Y[k] = punti+numradY
 
             for j in range(i,n):
 
                 c = it[j]#am.columns[j]
                 
+                #
                 if opts["print"] :
                     print(conta,"/",tot,end="\r")
-
+                
+                #
+                areaY = area[c]
+                if areaY == 0.0 :
+                    continue
+                                
                 # LA MATRICE E' DENSA
                 #if am.at[r,c] is False :
                 #    continue
@@ -1839,45 +1885,47 @@ class Bspline :
                 # provare a calcolare X e Y all'inizio di tutto quanto
                 
                 
-                # questi sono da modificare  
-                areaY = 1.0
-                for k in range(0,self.dim()):
-                    # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                    xmin = br.at[c,("min",k)]
-                    xmax = br.at[c,("max",k)]
-                    delta = xmax-xmin
-                    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                    puntiY  = np.delete(punti0,0)
-                    areaY = areaY*delta
+                # questi sono da modificare                  
+                #for k in range(0,self.dim()):
+                #    # ATTENZIONE ALLA DERIVATA LOGARITMICA
+                #    xmin = br.at[c,("min",k)]
+                #    xmax = br.at[c,("max",k)]
+                #    delta = xmax-xmin
+                #    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
+                #    puntiY  = np.delete(punti0,0)
+                #    #areaY = areaY*delta
                  
                 
                 successful = False
                 while not successful :
                     
-                    for k in range(0,self.dim()):
+                    for k in range(self.dim()):
                         # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                        numradX = (0.5-random.rand(len(puntiX)))*delta/(opts["delta"][k]+2)
-                        numradY = (0.5-random.rand(len(puntiY)))*delta/(opts["delta"][k]+2)
-                        X[k] = puntiX+numradX
-                        Y[k] = puntiY+numradY                     
+                        #numradX = (0.5-random.rand(len(puntiX)))*delta/(opts["delta"][k]+2)
+                        #numradY = (0.5-random.rand(len(puntiY)))*delta/(opts["delta"][k]+2)
+                        X[k] = np.random.uniform(br.at[r,("min",k)],br.at[r,("max",k)],opts["delta"][k])
+                        Y[k] = np.random.uniform(br.at[c,("min",k)],br.at[c,("max",k)],opts["delta"][k])
+                        
+                        #X[k] = puntiX+numradX
+                        #Y[k] = puntiY+numradY                     
                     
 
                     # devo usare np.meshgrid
                     mX = np.meshgrid(*X)
                     mY = np.meshgrid(*Y)
-                    for k in range(0,self.dim()):
+                    for k in range(self.dim()):
                         Xintegration[:,k] = mX[k].flatten()
                         Yintegration[:,k] = mY[k].flatten()
 
                     # questo è ottimizzabile
-                    meshN = len(Xintegration)*len(Yintegration)
-                    mesh = np.zeros((meshN,2),dtype=object)
+                    #meshN = len(Xintegration)*len(Yintegration)
+                    mesh = np.zeros((lenXY,2),dtype=object)
                     mesh.fill(Xintegration[0])
-                    n1 = len(Xintegration)
-                    n2 = len(Yintegration)
-                    for i in range(n1):
-                        for j in range(n2):
-                            k = n1*i+j
+                    #n1 = len(Xintegration)
+                    #n2 = len(Yintegration)
+                    for i in range(lenX):
+                        for j in range(lenX):
+                            k = lenX*i+j
                             mesh[k,0] = Xintegration[i]
                             mesh[k,1] = Yintegration[j]
                     # piccola modifica
@@ -1959,9 +2007,9 @@ class Bspline :
             self._ready_sm_BEM = True
         if opts["print"] :
             print("Finished")
-        if opts["return_both"]:
+        if opts["return_both"] == True:
             return persm,out
-        return persm,out
+        return persm
     
     ###
     def load_vector_BEM(self,gD=None,opts=None):
@@ -1971,14 +2019,6 @@ class Bspline :
         if opts["ready_lv_BEM"] == True and self._ready_lv_BEM == True :
             return self._lv_BEM
             
-        #if opts["ready_lv_BEM"] == False:
-        #    self._ready_lv_BEM = False
-
-        #if self._ready_lv_BEM == True :
-        #    return self._lv_BEM
-        
-        #edge = self.edge()
-
         #
         X = np.full(self.dim(),0.0,dtype=object)
         for k in range(0,self.dim()):
@@ -1993,7 +2033,7 @@ class Bspline :
         il = self.index_list()
         il = [ tuple(i) for i in il ]
         der = self.derivative()
-        scalar = self._scalar()
+        scalar = self._scalar(opts)
         scalar.clear_cp()
         out = pd.DataFrame(index = il, columns=["cp"],dtype=object)
         #out["index"] = il
@@ -2015,7 +2055,7 @@ class Bspline :
             scalar.set_cp(i,1.0)
             #ov = self.basis_overlap(i,i,br) #overlap
 
-            areaX = 1.0
+            areaX = br["area"][i]#1.0
             for k in range(0,self.dim()):
                 xmin = br.at[i,("min",k)]
                 xmax = br.at[i,("max",k)]
@@ -2024,7 +2064,7 @@ class Bspline :
                 punti  = np.delete(punti0,0)
                 numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
                 X[k] = punti+numradX
-                areaX = areaX*delta
+                #areaX = areaX*delta
 
             m = np.meshgrid(*X)
             for k in range(0,self.dim()):
