@@ -146,7 +146,7 @@ class Bspline :
                  knots = np.zeros(shape=(0,1),dtype=object),
                  cp    = None ,
                  prt   =  False,
-                 periodic = None
+                 properties = {"periodic":None,"dtype":float}
                 ):
         
         # making sure knots is a np.ndarray
@@ -156,6 +156,10 @@ class Bspline :
         
         # decido se stampare a schermo tutto 
         self._print = prt
+        
+        #tipo di variabile
+        self.properties = properties
+        #self.properties["dtype"] = dtype
            
         #check control points dimension
         if len(self._cp.shape) != sh.dim() :
@@ -192,7 +196,7 @@ class Bspline :
             print("Warning : knots lenght too long")
         elif len(knots) < sh.dim() :
             print("Error : knots lenght too short")
-            raise Exception()            
+            raise Exception()          flo  
          
         #copy knot vectors
         self._kv = knots[0:sh.dim()]
@@ -234,7 +238,7 @@ class Bspline :
         self._cp = np.zeros(shape=tuple(map(int,init)),dtype=object)
         self._cp.fill(self.Type_out())
         if self.codim() == 1 :
-            self._cp = self._cp.astype(float)
+            self._cp = self._cp.astype(self.dtype)
         
         #
         self._stiffness_matrix = None
@@ -516,7 +520,7 @@ class Bspline :
         curve_knot = self.knots_vectors()[1:]
         sub_kv     = self.get_knots_vector(0)
         new_sh     = shape(dim=self.dim()-1,codim=self.codim())        
-        curve      = Bspline(new_sh,curve_knot)
+        curve      = Bspline(new_sh,curve_knot,dtype=self.dtype,periodic=self._periodic)
         
         #
         m  = self.get_knots_vector(0).n()     
@@ -542,7 +546,7 @@ class Bspline :
         
         #print("surface_cp : ",surface_cp)            
         out_sh = shape(dim=1,codim=self.codim())        
-        return Bspline(out_sh,[sub_kv],surface_cp)    
+        return Bspline(out_sh,[sub_kv],surface_cp,dtype=self.dtype,periodic=self._periodic)    
     ###
     def evaluate(self,x):
         #sistemo dimensioni di x
@@ -995,6 +999,8 @@ class Bspline :
             opts["print"] = False
         if "delta" not in opts :
             opts["delta"] = np.full((self.dim(),),4)
+        if "return_both" not in opts :
+            opts["return_both"] = False
         #if "norm" not in opts :
         #    opts["norm"] = "L1"
             
@@ -1104,7 +1110,7 @@ class Bspline :
             #load vector
             lvnp = np.asarray(lv)
             #punti di bordo
-            gDnp = np.asarray(gDv,dtype=float)
+            gDnp = np.asarray(gDv,dtype=self.dtype)
             #prodotto righe per colonne
             edlv = np.dot(denp,gDnp)
 
@@ -1392,7 +1398,7 @@ class Bspline :
         #load vector
         lvnp = np.asarray(lv)
         #punti di bordo
-        gDnp = np.asarray(gDv,dtype=float)
+        gDnp = np.asarray(gDv,dtype=self.dtype)
         #prodotto righe per colonne
         edlv = np.dot(denp,gDnp)
         
@@ -1419,7 +1425,7 @@ class Bspline :
             out.iloc[out.index == j] = gDnp[i]
         #
         if self.codim() == 1 :
-            self._cp = self._cp.astype(float)
+            self._cp = self._cp.astype(self.dtype)
         return out      
     
     ###
@@ -1775,8 +1781,8 @@ class Bspline :
             r = right.evaluate(y)#.conjugate()
             dl = [ norm(i) for i in der.evaluate(x) ]
             dr = [ norm(i) for i in der.evaluate(y) ]
-            xx = self.evaluate(x).astype(float)
-            yy = self.evaluate(y).astype(float)
+            xx = self.evaluate(x).astype(self.dtype)
+            yy = self.evaluate(y).astype(self.dtype)
             d = np.asarray([ norm(i) for i in xx-yy ])
             f = foundamental(d)
             return f*d*l*dl*dr
