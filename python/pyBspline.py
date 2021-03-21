@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
+# In[29]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[22]:
+# In[19]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[23]:
+# In[20]:
 
 
 import numpy as np
@@ -136,7 +136,7 @@ def periodic_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[24]:
+# In[23]:
 
 
 import copy
@@ -851,25 +851,23 @@ class Bspline :
                 am.at[r,c] = intersection
                 am.at[c,r] = intersection
                 
+        if self.is_periodic() == True:
+            dof = self.dof()
+            delindex = [ i for i in am.index if i not in dof.index ]
+            perindex = [ self.get_periodic_index(i) for i in delindex  ]
+            index = am.index
+            for i in range(len(index)):
+                ii = index[i]
+                for j in range(len(index)) :        
+                    jj = index[j]
+                    #ip = self.get_periodic_index(ii)
+                    jp = self.get_periodic_index(jj)
+                    am.at[ii,jj] += am.at[ii,jp]
+            am = am.astype(bool) 
+                
         return am
     
-        #if self.is_periodic() == False:
-        #    return am
-        #else :
-        #    index = [ list(i)[0] for i in am.index]
-        #    #new_index = [ self.get_periodic_index(i) for i in index ]
-        #    #ni = [ tuple([i]) for i in new_index]
-        #    
-        #    ni = [ self.get_periodic_index(i) for i in index ]
-        #
-        #    #adjacency matrix of periodic control points
-        #    ams = am.copy()
-        #    ams.index = ni
-        #    ams.reindex(am.index,axis=0)
-        #    out = ams+am
-        #    out = out.astype(bool)
-        #    return out
-    
+   
     ### da rivedere
     def basis_max_min(self,r,br=None):
         
@@ -924,7 +922,7 @@ class Bspline :
         X = np.zeros(self.dim())
         conta = 1
         for k in range(0,self.dim()):
-            conta = conta * opts["delta"][k]
+            conta = conta * opts["N"][k]
         Xintegration = np.zeros(shape=(conta,self.dim()))
 
 
@@ -942,7 +940,12 @@ class Bspline :
         right.clear_cp()
 
         #adjacency matrix
+        #adjacency matrix
+        per = self.properties["periodic"]
+        self.properties["periodic"] = np.full((self.dim(),),False)
         am = self.adjacency_matrix()
+        self.properties["periodic"] = per
+        del per
 
         smd1D = am.copy()    
         smd1D[ smd1D == False ] = 0.0 #np.nan
@@ -953,7 +956,7 @@ class Bspline :
         for i in range(0,n):
             r = am.index[i] 
 
-            #creo la funzione di base
+            #creo la funzione di baseap
             #left.clear_cp()
             left.set_cp(r,1.0)
 
@@ -970,15 +973,17 @@ class Bspline :
                 #right.clear_cp()
                 right.set_cp(c,1.0)
                 ov = self.basis_overlap(r,c,br)
+                if np.any( [i is None for i in ov]) == True :
+                    continue
 
                 # provo a modificare
                 #X = [ np.delete(np.linspace(ov[k][0],ov[k][1],\
-                #                            opts["delta"][k]+1,endpoint=False),0) \
+                #                            opts["N"][k]+1,endpoint=False),0) \
                 #     for k in range(0,self.dim()) ]
                 X = np.full(self.dim(),0.0,dtype=object)
                 for k in range(0,self.dim()):
-                    # opts["delta"][k] = numero di punti interni
-                    punti = np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False)
+                    # opts["N"][k] = numero di punti interni
+                    punti = np.linspace(ov[k][0],ov[k][1],opts["N"][k]+1,endpoint=False)
                     X[k] = np.delete(punti,0)
 
                 area = 1
@@ -1026,8 +1031,12 @@ class Bspline :
             opts = {}
         if "print" not in opts :
             opts["print"] = False
-        if "delta" not in opts :
-            opts["delta"] = np.full((self.dim(),),4)
+        
+        if "N" not in opts :
+            opts["N"] = np.full((self.dim(),),4)
+        if "N2" not in opts :
+            opts["N2"] = np.power(opts["N"],2)
+            
         if "return_both" not in opts :
             opts["return_both"] = False
         #if "norm" not in opts :
@@ -1080,7 +1089,10 @@ class Bspline :
         for i in range(0,df.shape[0]):
             for k in allx :                
                 kv = self._kv[k]
-                e[k] = df.iloc[i,k] <= 0 or df.iloc[i,k] >= kv.n()-1
+                if self.properties["periodic"][k] == True:
+                    e[k] = False
+                else :
+                    e[k] = df.iloc[i,k] <= 0 or df.iloc[i,k] >= kv.n()-1
                 #e[k] = df.iloc[i,k] < kv.p() or df.iloc[i,k] > kv.n()-kv.p()-1
             df.at[df.index[i],"edge"] = np.any(e)
             df.at[df.index[i],"corner"] = np.all(e)
@@ -1144,7 +1156,7 @@ class Bspline :
             edlv = np.dot(denp,gDnp)
 
             #solve linear system
-            cpint = np.linalg.solve(dinp,lvnp-edlv) 
+            cpint = scipy.linalg.solve(dinp,lvnp-edlv,assume_a="sym") 
 
             #preparo gli indice della variabile di output
             #index = self.index_list()
@@ -1176,94 +1188,135 @@ class Bspline :
 
         else :                
 
-            if opts["interpolation"] == True :
-            #indici dei dof interni e di bordo
-                index_int  = edge.index[ edge["corner"] == False ]
-                index_edge = edge.index[ edge["corner"] == True  ]
-            else :
-                index_int  = edge.index#[ edge["corner"] == False ]
-                index_edge = []#edge.index[ edge["corner"] == True  ]
+           
+            is_periodic = self.is_periodic()
 
             #degrees of freedem: internal
-            dof_int = om.copy()
-            dof_int.drop( index_edge ,inplace = True,axis=0)
-            dof_int.drop( index_edge ,inplace = True,axis=1)
+
+            if is_periodic == True :
+
+                #
+                #il = self.index_list()
+                #it = [tuple(i) for i in il]
+                #dof = self.dof()
+                #delindex = [ i for i in it if i not in dof.index ]
+                #dof_int = om.copy()
+                #dof_int.drop( delindex ,inplace = True,axis=0)
+                #dof_int.drop( delindex ,inplace = True,axis=1)
+                
+                dof_int = self.make_matrix_periodic(om)
+
+
+            else :
+                
+                if opts["interpolation"] == True :
+                #indici dei dof interni e di bordo
+                    index_int  = edge.index[ edge["corner"] == False ]
+                    index_edge = edge.index[ edge["corner"] == True  ]
+                else :
+                    index_int  = edge.index#[ edge["corner"] == False ]
+                    index_edge = []#edge.index[ edge["corner"] == True  ]
+
+
+                 #
+                dof_int = om.copy()
+                dof_int.drop( index_edge ,inplace = True,axis=0)
+                dof_int.drop( index_edge ,inplace = True,axis=1)
+
+                #
+                dof_edge = om.copy()
+                dof_edge.drop( index_edge ,inplace = True,axis=0)
+                dof_edge.drop( index_int  ,inplace = True,axis=1)
+
+                denp = np.asarray(dof_edge)
+
 
             #degrees of freedem: edge            
-            dof_edge = om.copy()
-            dof_edge.drop( index_edge ,inplace = True,axis=0)
-            dof_edge.drop( index_int  ,inplace = True,axis=1)
 
             #convert into numpy array
             dinp = np.asarray(dof_int)
-            denp = np.asarray(dof_edge)
+            #denp = np.asarray(dof_edge)
 
             #load vector: dof interni
             #print("load vector")
-            lv = self.load_vector(func,opts)
-            lv.drop( index_edge  ,inplace = True) 
+            lv0 = self.load_vector(func,opts)
+            #lv.at[(11,),"cp"] = 0.
+            if is_periodic == True :
+                lv = self.make_vector_periodic(lv0)
+                
+            else :
+                
+                lv0.drop( index_edge  ,inplace = True) 
 
+                XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+                for k in range(self.dim()):
+                    kv = self.knots_vectors()[k]
+                    nmax = kv.n()-1
+                    xmin = min(kv.knots())
+                    xmax = max(kv.knots())
+                    for i in index_edge:
+                        if i[k] == nmax :
+                            XY.at[i,k] = xmax
+                        else :
+                            XY.at[i,k] = xmin
 
-            #
-            XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
-            for k in range(self.dim()):
-                kv = self.knots_vectors()[k]
-                nmax = kv.n()-1
-                xmin = min(kv.knots())
-                xmax = max(kv.knots())
-                for i in index_edge:
-                    if i[k] == nmax :
-                        XY.at[i,k] = xmax
-                    else :
-                        XY.at[i,k] = xmin
+                xy = np.asarray(XY).astype(float)
+                #if self.dim() == 1 :
+                #    xy = xy.reshape((len(xy),))
 
-            xy = np.asarray(XY).astype(float)
-            #if self.dim() == 1 :
-            #    xy = xy.reshape((len(xy),))
+                #dof di bordo
+                #print("gDnp")
+                gDnp = func(xy)#.astype(float)
 
-            #dof di bordo
-            #print("gDnp")
-            gDnp = func(xy)#.astype(float)
+                if self.codim() == 1 :
+                    a = gDnp.copy()
+                    gDnp = np.zeros(shape=(len(a),self.codim()))
+                    gDnp[:,0] = a
+                    del a
+                gDnpND = gDnp
+
+            #raise()
 
             ###        
             #print("ciao")
             lvnpND = np.asarray(lv["cp"])#.astype(float)
             lvnpND = np.zeros(shape=(len(lv),self.codim()))
             for i in range(len(lv)):
-                lvnpND[i,:] = lv["cp"][i]    
+                lvnpND[i,:] = lv["cp"][i]   
 
-            if self.codim() == 1 :
-                a = gDnp.copy()
-                gDnp = np.zeros(shape=(len(a),self.codim()))
-                gDnp[:,0] = a
-                del a
-            gDnpND = gDnp
+            #raise()
+
 
             #prodotto righe per colonne
             #edlv = np.dot(denp,gDnp)
             #edlvND = edlv
-            
+
             # -> da rivedere
             # qui devo introdurre del codice per gestire 
             # il fatto che la Bspline può essere periodica
 
 
-            out = pd.DataFrame(index=index_int,columns=np.arange(0,self.codim()))
+            out = pd.DataFrame(index=lv.index,columns=np.arange(0,self.codim()))
             #index = self.index_list()
             #it = [ tuple(j) for j in index ]
             for k in range(self.codim()):
 
-                gDnp = gDnpND[:,k]
-                edlv = np.dot(denp,gDnp)
-                #edlv = edlvND[:,k]
                 lvnp = lvnpND[:,k]
 
+                if is_periodic == False :
 
-                gDnp = gDnp.reshape((len(gDnp),))
-                edlv = edlv.reshape((len(edlv),))
+                    gDnp = gDnpND[:,k]
+                    gDnp = gDnp.reshape((len(gDnp),))
+                    edlv = np.dot(denp,gDnp)
+                    #edlv = edlvND[:,k]
 
-                #
-                cpint = np.linalg.solve(dinp,lvnp-edlv) 
+                    #
+                    #edlv = edlv.reshape((len(edlv),))
+
+                    #
+                    cpint = scipy.linalg.solve(dinp,lvnp-edlv,assume_a="sym") 
+                else :
+                    cpint = scipy.linalg.solve(dinp,lvnp,assume_a="sym") 
 
                 #cp = pd.DataFrame(index=it,columns=["cp"])
 
@@ -1271,18 +1324,20 @@ class Bspline :
 
             #assegno ai control points i valori calcolati
             #valori interni
-            for i in range(len(index_int)):
-                j = index_int[i]
-                self._cp[j] = np.asarray(out.iloc[i,:])
+            effindex = self.get_effective_index()
+            for i in range(len(effindex)):
+                j = effindex[i]
+                self.set_cp(j,np.asarray(out.iloc[i,:]))
                 #out.iloc[out.index == j] = cpint[i]
 
             #assegno ai control points i valori calcolati
             #valori di bordo interpolanti
-            for i in range(len(index_edge)):
-                j = index_edge[i]
-                self._cp[j] = gDnpND[i]
-                #out.iloc[out.index == j] = gDnp[i]
-        
+            if is_periodic == False:
+                for i in range(len(index_edge)):
+                    j = index_edge[i]
+                    self.set_cp(j,gDnpND[i])
+                    #out.iloc[out.index == j] = gDnp[i]
+
         return self.control_points()
     
     ##
@@ -1651,10 +1706,12 @@ class Bspline :
         edge = self.edge()
 
         #
-        X = np.zeros(self.dim())
+        X = np.full(self.dim(),0.0,dtype=object)
+        for k in range(0,self.dim()):
+            X[k] =  np.full(opts["N"][k],0.0)
         conta = 1
         for k in range(0,self.dim()):
-            conta = conta * opts["delta"][k]
+            conta = conta * opts["N"][k]
         Xintegration = np.zeros(shape=(conta,self.dim()))
 
         #
@@ -1667,10 +1724,10 @@ class Bspline :
         scalar = self._scalar(opts)
         scalar.clear_cp()
         #piccola modifica : self -> scalar
-        out = pd.DataFrame(columns=["index","cp"],dtype=object)
-        out["index"] = il
+        out = pd.DataFrame(0.0,index=il,columns=["cp"],dtype=object)
+        #out["index"] = il
         #out = pd.DataFrame({"index" : il , "cp" : scalar._cp.copy().flatten().astype(float) })
-        out.set_index("index",inplace=True)
+        #out.set_index("index",inplace=True)
 
         #definisco la norma di Lebesgue
 
@@ -1681,11 +1738,12 @@ class Bspline :
             for i in range(self.codim()):
                 out[:,i] = a*b[:,i]
             return out
-
+    
+        dtype = self.properties["dtype"]
         def integrate_1D(xx):
             A = scalar.evaluate(xx)
             B = func(xx)
-            return [ self.properties["dtype"](a*b) for a,b in zip(A,B) ] 
+            return [ dtype(a*b) for a,b in zip(A,B) ] 
 
         if self.codim() == 1 :
             integrate = integrate_1D
@@ -1707,13 +1765,22 @@ class Bspline :
             scalar.set_cp(i,1.0)
             ov = self.basis_overlap(i,i,br) #overlap
             
+            area = br["area"][i]#1.0
+            if area == 0.0 :
+                continue   
+                
+            for k in range(self.dim()):
+                X[k] = np.random.uniform(br.at[i,("min",k)],br.at[i,("max",k)],opts["N"][k])
+
+            
             # ho messo endpoint = True
             # rimetto endpoint = False
             # tenere assolutamente endpoint = False
-            X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["delta"][k]+1,endpoint=False),0)                  for k in range(0,self.dim()) ]
-            area = 1
-            for k in range(0,self.dim()):
-                area = area * ( ov[k][1] - ov[k][0] )
+            #X = [ np.delete(np.linspace(ov[k][0],ov[k][1],opts["N"][k]+1,endpoint=False),0) \
+            #     for k in range(0,self.dim()) ]
+            #area = 1
+            #for k in range(0,self.dim()):
+            #    area = area * ( ov[k][1] - ov[k][0] )
             m = np.meshgrid(*X)
             for k in range(0,self.dim()):
                 Xintegration[:,k] = m[k].flatten()
@@ -1753,33 +1820,21 @@ class Bspline :
         
         if opts["ready_sm_BEM"] == True and self._ready_sm_BEM == True :
             return self._stiffness_matrix_BEM
-
-        #if opts["ready_sm_BEM"] == False:
-        #    self._ready_sm_BEM = False
-
-        #if self._ready_sm_BEM == True :
-        #    return self._stiffness_matrix_BEM
-        
+       
         if opts["print"] :
             print("stiffness_matrix_BEM")
 
-        conta = 1
-        for k in range(0,self.dim()):
-            conta = conta * opts["delta"][k]
-        Xintegration = np.zeros(shape=(conta,self.dim()))
-        Yintegration = Xintegration.copy()
-        lenX = len(Xintegration)
-        lenXY = lenX*lenX
-        del conta
+        lunghezza0 = 0
 
         #X = np.full(self.dim(),0.0,dtype=object)
         X = np.full(self.dim(),0.0,dtype=object)
         for k in range(0,self.dim()):
-            X[k] =  np.full(opts["delta"][k],0.0)
+            X[k] =  np.full(opts["N"][k],0.0)
         Y = X.copy()        
 
         #a djacency matrix
-        #am = self.adjacency_matrix()
+        am = self.adjacency_matrix()
+        #
         il = self.index_list()
         it = [ tuple(i) for i in il ]
         # basis range
@@ -1799,7 +1854,7 @@ class Bspline :
         #
         temp = self.copy()
         temp.clear_cp()
-        derivatives = pd.DataFrame(index=it,columns="derivative",dtype=object)
+        derivatives = pd.DataFrame(index=it,columns=["derivative"],dtype=object)
         for i in it:
             temp.set_cp(i,1.0)
             derivatives.at[i,"derivative"] = temp.derivative()
@@ -1812,7 +1867,7 @@ class Bspline :
 
         # unità immaginaria
         I = np.complex(0,1)
-        
+
         def foundamental(d):
             return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0  
 
@@ -1842,43 +1897,29 @@ class Bspline :
 
             #
             r = it[i]#am.index[i] 
-            
+
             #
             areaX = area[r]
             if areaX == 0.0 :
                 continue                    
-                    
+
             #
             left.set_cp(r,1.0)
             der_left  = derivatives.at[r,"derivative"]#left.derivative()
 
-            #
-            #for k in range(0,self.dim()):
-            #    # ATTENZIONE ALLA DERIVATA LOGARITMICA
-            #    xmin = br.at[r,("min",k)]
-            #    xmax = br.at[r,("max",k)]
-            #    delta = xmax-xmin
-            #    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-            #    puntiX  = np.delete(punti0,0)
-            #    #numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
-            #    #numradY = (0.5-random.rand(len(punti)))*(ov[k][1]-ov[k][0])/(opts["delta"][k]+2)
-            #    #X[k] = punti+numradX
-            #    #areaX = areaX*delta
-            #    #Y[k] = punti+numradY
-
             for j in range(i,n):
 
                 c = it[j]#am.columns[j]
-                
+
                 #
                 if opts["print"] :
                     print(conta,"/",tot,end="\r")
-                
+
                 #
                 areaY = area[c]
                 if areaY == 0.0 :
                     continue
-                                
+
                 # LA MATRICE E' DENSA
                 #if am.at[r,c] is False :
                 #    continue
@@ -1888,41 +1929,32 @@ class Bspline :
                 #ov = self.basis_overlap(r,c,br)
                 der_right = derivatives.at[c,"derivative"]#right.derivative()
 
-                # ATTENZIONE:
-                # preparare X e Y in due step diversi, si riferiscono a due funzioni di base diverse
-                # una dentro e l'altra fuori dal ciclo
-                # considerare i range di entrambe le funzioni di base
-                # provare a calcolare X e Y all'inizio di tutto quanto
-                
-                
-                # questi sono da modificare                  
-                #for k in range(0,self.dim()):
-                #    # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                #    xmin = br.at[c,("min",k)]
-                #    xmax = br.at[c,("max",k)]
-                #    delta = xmax-xmin
-                #    punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                #    puntiY  = np.delete(punti0,0)
-                #    #areaY = areaY*delta
-                 
-                
                 successful = False
                 while not successful :
-                    
+
+                    lunghezza = 1
                     for k in range(self.dim()):
                         # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                        #numradX = (0.5-random.rand(len(puntiX)))*delta/(opts["delta"][k]+2)
-                        #numradY = (0.5-random.rand(len(puntiY)))*delta/(opts["delta"][k]+2)
-                        X[k] = np.random.uniform(br.at[r,("min",k)],br.at[r,("max",k)],opts["delta"][k])
-                        Y[k] = np.random.uniform(br.at[c,("min",k)],br.at[c,("max",k)],opts["delta"][k])
-                        
+                        #numradX = (0.5-random.rand(len(puntiX)))*delta/(opts["N"][k]+2)
+                        #numradY = (0.5-random.rand(len(puntiY)))*delta/(opts["N"][k]+2)
+                        num = opts["N"][k] if am.at[r,c] == True else opts["N2"][k]
+                        lunghezza = lunghezza * num
+                        X[k] = np.random.uniform(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                        Y[k] = np.random.uniform(br.at[c,("min",k)],br.at[c,("max",k)],num)
+
                         #X[k] = puntiX+numradX
                         #Y[k] = puntiY+numradY                     
-                    
+
 
                     # devo usare np.meshgrid
                     mX = np.meshgrid(*X)
                     mY = np.meshgrid(*Y)
+
+                    if lunghezza != lunghezza0 :
+                        Xintegration = np.zeros(shape=(lunghezza,self.dim()))
+                        Yintegration = Xintegration.copy()
+                        lunghezza0 = lunghezza
+
                     for k in range(self.dim()):
                         Xintegration[:,k] = mX[k].flatten()
                         Yintegration[:,k] = mY[k].flatten()
@@ -1931,6 +1963,7 @@ class Bspline :
                     #meshN = len(Xintegration)*len(Yintegration)
                     mesh = np.zeros((lenXY,2),dtype=object)
                     mesh.fill(Xintegration[0])
+                    lenX = len(Xintegration)
                     #n1 = len(Xintegration)
                     #n2 = len(Yintegration)
                     for i in range(lenX):
@@ -1950,67 +1983,33 @@ class Bspline :
 
                     y = integrate(mesh)
                     res = np.mean(y)*areaX*areaY
-                    
+
                     #
                     successful = not np.isnan(res)
-                    
+
                     if not successful :
                         print("found nan value for [",r,",",c,"]: repeating the cycle")
 
                     ###
                     # FINE
-                    
-                   
+
+
                 #    
                 out.at[r,c] = res
                 out.at[c,r] = res #matrice simmetrica
 
                 #cancello
                 right.set_cp(c,0.0)
-                
+
                 #incremento
                 conta = conta +1
 
                 #cancello
             left.set_cp(r,0.0)
-         
-        # TENGO CONTO DELLA PERIODICITA'
-        # le funzioni di base non corrispondono ai control points
-        #
-        #il = self.index_list()
-        #it = [tuple(i) for i in il ]
-        dof = self.dof()
-        
-        #self.periodicity()
-        #per = dof.copy()
-        #for i in it :
-        #    j = per.at[i,"periodic"]
-        #    #print(j)
-        #    if j is not None and i in dof.index :
-        #        dof.drop(j,inplace = True)
 
+        # TENGO CONTO DELLA PERIODICITA'        
+        persm = self.make_matrix_periodic(out)
 
-        persm = out.copy()
-        delindex = [ i for i in out.index if i not in dof.index ]
-        perindex = [ self.get_periodic_index(i) for i in delindex  ]
-        index = out.index
-        for i in index:
-            for j in perindex :
-                #ii = self.get_periodic_index(i)
-                jp = self.get_periodic_index(j)
-                persm.at[i,j] += persm.at[i,jp]
-
-        for i in index:
-            for j in perindex :
-                #ii = self.get_periodic_index(i)
-                jp = self.get_periodic_index(j)
-                persm.at[j,i] += persm.at[jp,i]
-                #persm.at[j,i] = persm.at[i,j]
-
-        for i in delindex:
-            persm.drop(i,inplace=True,axis=0)
-            persm.drop(i,inplace=True,axis=1)
-                    
         #    
         if opts["copy_sm_BEM"] == True :
             self._stiffness_matrix_BEM = persm.copy()
@@ -2032,10 +2031,10 @@ class Bspline :
         #
         X = np.full(self.dim(),0.0,dtype=object)
         for k in range(0,self.dim()):
-            X[k] =  np.full(opts["delta"][k],0.0)
+            X[k] =  np.full(opts["N"][k],0.0)
         conta = 1
         for k in range(0,self.dim()):
-            conta = conta * opts["delta"][k]
+            conta = conta * opts["N"][k]
         Xintegration = np.zeros(shape=(conta,self.dim()))
 
         #
@@ -2068,7 +2067,7 @@ class Bspline :
                 continue   
                 
             for k in range(self.dim()):
-                X[k] = np.random.uniform(br.at[i,("min",k)],br.at[i,("max",k)],opts["delta"][k])
+                X[k] = np.random.uniform(br.at[i,("min",k)],br.at[i,("max",k)],opts["N"][k])
 
             m = np.meshgrid(*X)
             for k in range(0,self.dim()):
@@ -2080,16 +2079,17 @@ class Bspline :
             scalar.set_cp(i,0.0)
             
         # TENGO CONTO DELLA PERIODICITA'
-        dof = self.dof()
-        perlv = out.copy()
-        delindex = [ i for i in out.index if i not in dof.index ]
-        #perindex = [ self.get_periodic_index(i) for i in delindex  ]
-        #index = out.index
-        for j in delindex :
-            jp = self.get_periodic_index(j)
-            perlv.at[jp,"cp"] += perlv.at[j,"cp"]
-        for i in delindex:
-            perlv.drop(i,inplace=True,axis=0)
+        #dof = self.dof()
+        #perlv = out.copy()
+        #delindex = [ i for i in out.index if i not in dof.index ]
+        ##perindex = [ self.get_periodic_index(i) for i in delindex  ]
+        ##index = out.index
+        #for j in delindex :
+        #    jp = self.get_periodic_index(j)
+        #    perlv.at[jp,"cp"] += perlv.at[j,"cp"]
+        #for i in delindex:
+        #    perlv.drop(i,inplace=True,axis=0)
+        perlv = self.make_vector_periodic(out)
    
         #
         if opts["copy_lv_BEM"] == True :
@@ -2100,6 +2100,68 @@ class Bspline :
         return perlv
     
     ###
+    def make_vector_periodic(self,out):
+        dof = self.dof()
+        perlv = out.copy()
+        delindex = [ i for i in out.index if i not in dof.index ]
+        #perindex = [ self.get_periodic_index(i) for i in delindex  ]
+        #index = out.index
+        for j in delindex :
+            jp = self.get_periodic_index(j)
+            perlv.at[jp,"cp"] += perlv.at[j,"cp"]
+        for i in delindex:
+            perlv.drop(i,inplace=True,axis=0)
+        return perlv
+    
+    ###
+    def make_matrix_periodic(self,out):
+        
+        dof = self.dof()
+        
+        #self.periodicity()
+        #per = dof.copy()
+        #for i in it :
+        #    j = per.at[i,"periodic"]
+        #    #print(j)
+        #    if j is not None and i in dof.index :
+        #        dof.drop(j,inplace = True)
+
+        persm = out.copy()
+        delindex = [ i for i in out.index if i not in dof.index ]
+        perindex = [ self.get_periodic_index(i) for i in delindex  ]
+        index = out.index
+        for i in index:
+            for j in perindex :
+                #ii = self.get_periodic_index(i)
+                jp = self.get_periodic_index(j)
+                persm.at[i,j] += persm.at[i,jp]
+
+        for i in index:
+            for j in perindex :
+                #ii = self.get_periodic_index(i)
+                jp = self.get_periodic_index(j)
+                persm.at[j,i] += persm.at[jp,i]
+                #persm.at[j,i] = persm.at[i,j]
+
+        for i in delindex:
+            persm.drop(i,inplace=True,axis=0)
+            persm.drop(i,inplace=True,axis=1)
+            
+        return persm
+      
+    
+    
+        
+    ###
+    def get_effective_index(self):   
+        il = self.index_list()
+        it = [tuple(i) for i in il]
+        dof = self.dof()
+        delindex = [ i for i in it if i not in dof.index ]
+        effindex = [ i for i in it if i not in delindex ]
+        return effindex
+    
+    ###
     def single_layer_potential_basis_BEM(self,XY=None,k=None,opts=None):
         # variabile di output
         # matrice con:
@@ -2107,12 +2169,16 @@ class Bspline :
         # - colonne : funzioni di base
         #out = pd.DataFrame(index=np.arange(0,len(XY)),columns=lv.index)
         opts = self.prepare_opts(opts)
+        
+        if opts["ready_slp_BEM"] == True and self._ready_slp_BEM == True :
+            return self._slp_matrix_BEM       
 
-        if opts["ready_slp_BEM"] == False:
-            self._ready_slp_BEM = False
+        #if opts["ready_slp_BEM"] == False:
+        #    self._ready_slp_BEM = False
 
-        if self._ready_slp_BEM == True :
-            return self._slp_matrix_BEM
+        #if self._ready_slp_BEM == True :
+        #    return self._slp_matrix_BEM
+        
         
         #il = self.index_list()
         #il = [ tuple(i) for i in il ]
