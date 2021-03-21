@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[35]:
+# In[3]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -1796,6 +1796,16 @@ class Bspline :
         right.clear_cp()
         #
         del scalar
+        #
+        temp = self.copy()
+        temp.clear_cp()
+        derivatives = pd.DataFrame(index=it,columns="derivative",dtype=object)
+        for i in it:
+            temp.set_cp(i,1.0)
+            derivatives.at[i,"derivative"] = temp.derivative()
+            temp.set_cp(i,0.0)
+        #
+        del temp
 
         # out variable
         out = pd.DataFrame(0.0,index=it,columns=it,dtype=np.complex)
@@ -1840,7 +1850,7 @@ class Bspline :
                     
             #
             left.set_cp(r,1.0)
-            der_left  = left.derivative()
+            der_left  = derivatives.at[r,"derivative"]#left.derivative()
 
             #
             #for k in range(0,self.dim()):
@@ -1876,7 +1886,7 @@ class Bspline :
                 #
                 right.set_cp(c,1.0)
                 #ov = self.basis_overlap(r,c,br)
-                der_right = right.derivative()
+                der_right = derivatives.at[c,"derivative"]#right.derivative()
 
                 # ATTENZIONE:
                 # preparare X e Y in due step diversi, si riferiscono a due funzioni di base diverse
@@ -2004,11 +2014,11 @@ class Bspline :
         #    
         if opts["copy_sm_BEM"] == True :
             self._stiffness_matrix_BEM = persm.copy()
-            self._ready_sm_BEM = True
-        if opts["print"] :
-            print("Finished")
+            self._ready_sm_BEM = True        
         if opts["return_both"] == True:
             return persm,out
+        if opts["print"] :
+            print("Finished")
         return persm
     
     ###
@@ -2035,7 +2045,7 @@ class Bspline :
         der = self.derivative()
         scalar = self._scalar(opts)
         scalar.clear_cp()
-        out = pd.DataFrame(index = il, columns=["cp"],dtype=object)
+        out = pd.DataFrame(0.0,index = il, columns=["cp"],dtype=np.complex)
         #out["index"] = il
         #out.set_index("index",inplace=True)
 
@@ -2051,20 +2061,14 @@ class Bspline :
 
         for i in il :
 
-            #i = tuple(i)
             scalar.set_cp(i,1.0)
-            #ov = self.basis_overlap(i,i,br) #overlap
 
             areaX = br["area"][i]#1.0
-            for k in range(0,self.dim()):
-                xmin = br.at[i,("min",k)]
-                xmax = br.at[i,("max",k)]
-                delta = xmax-xmin
-                punti0 = np.linspace(xmin,xmax,opts["delta"][k]+1,endpoint=True)
-                punti  = np.delete(punti0,0)
-                numradX = (0.5-random.rand(len(punti)))*delta/(opts["delta"][k]+2)
-                X[k] = punti+numradX
-                #areaX = areaX*delta
+            if areaX == 0.0 :
+                continue   
+                
+            for k in range(self.dim()):
+                X[k] = np.random.uniform(br.at[i,("min",k)],br.at[i,("max",k)],opts["delta"][k])
 
             m = np.meshgrid(*X)
             for k in range(0,self.dim()):
@@ -2077,23 +2081,23 @@ class Bspline :
             
         # TENGO CONTO DELLA PERIODICITA'
         dof = self.dof()
-        persm = out.copy()
+        perlv = out.copy()
         delindex = [ i for i in out.index if i not in dof.index ]
-        perindex = [ self.get_periodic_index(i) for i in delindex  ]
-        index = out.index
-        for i in index:
-            ip = self.get_periodic_index(i)
-            persm.at[i,"cp"] += persm.at[ip,"cp"]
+        #perindex = [ self.get_periodic_index(i) for i in delindex  ]
+        #index = out.index
+        for j in delindex :
+            jp = self.get_periodic_index(j)
+            perlv.at[jp,"cp"] += perlv.at[j,"cp"]
         for i in delindex:
-            persm.drop(i,inplace=True,axis=0)
-
-            
+            perlv.drop(i,inplace=True,axis=0)
+   
+        #
         if opts["copy_lv_BEM"] == True :
-            self._lv_BEM = persm.copy()
+            self._lv_BEM = perlv.copy()
             self._ready_lv_BEM = True
         if opts["return_both"]:
-            return persm,out
-        return persm
+            return perlv,out
+        return perlv
     
     ###
     def single_layer_potential_basis_BEM(self,XY=None,k=None,opts=None):
