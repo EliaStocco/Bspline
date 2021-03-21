@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[29]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -1961,9 +1961,11 @@ class Bspline :
 
                     # questo è ottimizzabile
                     #meshN = len(Xintegration)*len(Yintegration)
-                    mesh = np.zeros((lenXY,2),dtype=object)
-                    mesh.fill(Xintegration[0])
                     lenX = len(Xintegration)
+                    lenXY = lenX*lenX
+                    mesh = np.zeros((lenXY,2),dtype=object)
+                    #mesh.fill(Xintegration[0])
+                    
                     #n1 = len(Xintegration)
                     #n2 = len(Yintegration)
                     for i in range(lenX):
