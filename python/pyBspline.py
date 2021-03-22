@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -9,7 +9,7 @@ get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 # ## Shape class
 
-# In[19]:
+# In[2]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[20]:
+# In[3]:
 
 
 import numpy as np
@@ -136,7 +136,7 @@ def periodic_kv(xmin,xmax,p,n):
 
 # ## Bspline class
 
-# In[23]:
+# In[4]:
 
 
 import copy
@@ -1027,54 +1027,33 @@ class Bspline :
         
     ###
     def prepare_opts(self,opts,opts2=None):
+        
+        #
         if opts is None:
             opts = {}
-        if "print" not in opts :
-            opts["print"] = False
+        if opts2 is not None :
+            opts.update(opts2)
         
+        #
         if "N" not in opts :
             opts["N"] = np.full((self.dim(),),4)
         if "N2" not in opts :
             opts["N2"] = np.power(opts["N"],2)
-            
-        if "return_both" not in opts :
-            opts["return_both"] = False
-        #if "norm" not in opts :
-        #    opts["norm"] = "L1"
-            
-        #if "del-edge" not in opts :
-        #    opts["del-edge"] = True
-        if opts2 is not None :
-            opts.update(opts2)
-        #if "ready_om" not in opts :
-        #    opts["ready_om"] = True
-        #if "ready_sm" not in opts :
-        #    opts["ready_sm"] = True
-            
-        #if "ready_sm_BEM" not in opts :
-        #    opts["ready_sm_BEM"] = True
-        #if "ready_slp_BEM" not in opts :
-        #    opts["ready_slp_BEM"] = True
-        #if "ready_sol_BEM" not in opts :
-        #    opts["ready_sol_BEM"] = True   
-        #if "ready_ind_sol_BEM" not in opts :
-        #    opts["ready_ind_sol_BEM"] = True   
-        #if "ready_lv_BEM" not in opts :
-        #    opts["ready_lv_BEM"] = True   
+        if "ready_trace" not in opts :
+            opts["ready_trace"] = [ False for i in range(self.dim())]
         
-        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                   "copy_ind_sol_BEM","copy_lv_BEM",                   "interpolation",                   "del-edge","ready_om","ready_sm"]
-        
+            
+        #
+        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                   "copy_ind_sol_BEM","copy_lv_BEM",                   "interpolation",                   "del-edge","ready_om","ready_sm"]        
         for v in varTrue :            
             if v not in opts :
                 opts[v] = True
-            
-            
-        #if "interpolation" not in opts:
-        #    opts["interpolation"] = True
-        #if "ready_lv" not in opts :
-        #    opts["ready_lv"] = False
-        if "ready_trace" not in opts :
-            opts["ready_trace"] = [ False for i in range(self.dim())]
+         
+        #
+        varFalse = ["random","return_both","print"]        
+        for v in varFalse :            
+            if v not in opts :
+                opts[v] = False
         
         return opts
     
@@ -1824,13 +1803,42 @@ class Bspline :
         if opts["print"] :
             print("stiffness_matrix_BEM")
 
-        lunghezza0 = 0
+
+        #
+        lunghezza  = 1
+        lunghezza2 = 1
+        for k in range(self.dim()):
+            lunghezza = lunghezza*opts["N"][k]
+            lunghezza2 = lunghezza2*opts["N2"][k]
+        Xintegration = np.zeros(shape=(lunghezza,self.dim()))
+        Xintegration2 = np.zeros(shape=(lunghezza2,self.dim()))
+        Yintegration = Xintegration.copy()
+        Yintegration2 = Xintegration2.copy()
+
+        #
+        lenX = len(Xintegration)
+        lenXY = lenX*lenX
+        mesh = np.zeros((lenXY,2),dtype=object)
+        if self.dim() == 1:
+            mesh = mesh.astype(float)
+
+
+        #
+        lenX2 = len(Xintegration2)
+        lenXY2 = lenX2*lenX2
+        mesh2 = np.zeros((lenXY2,2),dtype=object)
+        if self.dim() == 1:
+            mesh2 = mesh2.astype(float)
+
 
         #X = np.full(self.dim(),0.0,dtype=object)
         X = np.full(self.dim(),0.0,dtype=object)
-        for k in range(0,self.dim()):
+        X2 = X.copy()
+        for k in range(self.dim()):
             X[k] =  np.full(opts["N"][k],0.0)
-        Y = X.copy()        
+            X[k] =  np.full(opts["N2"][k],0.0)
+        Y = X.copy()     
+        Y2 = X2.copy()
 
         #a djacency matrix
         am = self.adjacency_matrix()
@@ -1852,15 +1860,15 @@ class Bspline :
         #
         del scalar
         #
-        temp = self.copy()
-        temp.clear_cp()
-        derivatives = pd.DataFrame(index=it,columns=["derivative"],dtype=object)
-        for i in it:
-            temp.set_cp(i,1.0)
-            derivatives.at[i,"derivative"] = temp.derivative()
-            temp.set_cp(i,0.0)
+        #temp = self.copy()
+        #temp.clear_cp()
+        #derivatives = pd.DataFrame(index=it,columns=["derivative"],dtype=object)
+        #for i in it:
+        #    temp.set_cp(i,1.0)
+        #    derivatives.at[i,"derivative"] = temp.derivative()
+        #    temp.set_cp(i,0.0)
         #
-        del temp
+        #del temp
 
         # out variable
         out = pd.DataFrame(0.0,index=it,columns=it,dtype=np.complex)
@@ -1871,20 +1879,102 @@ class Bspline :
         def foundamental(d):
             return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0  
 
-        def integrate(xy):
-            x = xy[:,0]
-            y = xy[:,1]
+        def integrate_quad(x,y):
             l = left.evaluate(x)
             r = right.evaluate(y)#.conjugate()
             dl = [ norm(i) for i in der.evaluate(x) ]
             dr = [ norm(i) for i in der.evaluate(y) ]
-            xx = self.evaluate(x).astype(self.properties["dtype"])
-            yy = self.evaluate(y).astype(self.properties["dtype"])
+            xx = self.evaluate(x)#.astype(self.properties["dtype"])
+            yy = self.evaluate(y)#.astype(self.properties["dtype"])
             d = np.asarray([ norm(i) for i in xx-yy ])
             f = foundamental(d)
             return f*d*l*dl*dr
+        
+        def integrate(xy):
+            #x = xy[:,0]
+            #y = xy[:,1]
+            return integrate_quad(xy[:,0],xy[:,1])
+            #l = left.evaluate(x)
+            #r = right.evaluate(y)#.conjugate()
+            #dl = [ norm(i) for i in der.evaluate(x) ]
+            #dr = [ norm(i) for i in der.evaluate(y) ]
+            #xx = self.evaluate(x).astype(self.properties["dtype"])
+            #yy = self.evaluate(y).astype(self.properties["dtype"])
+            #d = np.asarray([ norm(i) for i in xx-yy ])
+            #f = foundamental(d)
+            #return f*d*l*dl*dr
+            
+        if opts["random"] == True:
+            generate = np.random.uniform
+        else :
+            generate = np.linspace
+
+        #    
+        #mX = None
+        #mY = None
+        def my_cycle_step(r,c):
+            # r : row index
+            # c : col index
+            
+            if am.at[r,c] == False:
+                for k in range(self.dim()):
+                    num = opts["N"][k]
+                    X[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                    Y[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
+
+            else :                
+                for k in range(self.dim()):
+                    num = opts["N2"][k]
+                    X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                    Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
 
 
+            if am.at[r,c] == False :
+
+                # devo usare np.meshgrid
+                mX = np.meshgrid(*X)
+                mY = np.meshgrid(*Y)
+
+
+                for k in range(self.dim()):
+                    Xintegration[:,k] = mX[k].flatten()
+                    Yintegration[:,k] = mY[k].flatten()
+
+                for i in range(lenX):
+                    for j in range(lenX):
+                        k = lenX*i+j
+                        mesh[k,0] = Xintegration[i]
+                        mesh[k,1] = Yintegration[j]
+
+                y = integrate(mesh)
+
+            else :    
+
+                mX = np.meshgrid(*X2)
+                mY = np.meshgrid(*Y2)
+
+                for k in range(self.dim()):
+                    Xintegration2[:,k] = mX[k].flatten()
+                    Yintegration2[:,k] = mY[k].flatten()
+
+                for i in range(lenX2):
+                    for j in range(lenX2):
+                        k = lenX2*i+j
+                        mesh2[k,0] = Xintegration2[i]
+                        mesh2[k,1] = Yintegration2[j]
+
+                y = integrate(mesh2)
+
+            ###
+            # VALUTAZIONE DELL'INTEGRALE
+
+            #y = integrate(mesh)
+            #print(y)
+            res = np.nanmean(y)*areaX*areaY
+            return res
+
+
+       
         ###
         # CICLO
         successful = False
@@ -1905,7 +1995,7 @@ class Bspline :
 
             #
             left.set_cp(r,1.0)
-            der_left  = derivatives.at[r,"derivative"]#left.derivative()
+            #der_left  = derivatives.at[r,"derivative"]#left.derivative()
 
             for j in range(i,n):
 
@@ -1913,7 +2003,7 @@ class Bspline :
 
                 #
                 if opts["print"] :
-                    print(conta,"/",tot,end="\r")
+                    print(conta,"/",tot,":",r,"-",c,end="\r")
 
                 #
                 areaY = area[c]
@@ -1927,64 +2017,15 @@ class Bspline :
                 #
                 right.set_cp(c,1.0)
                 #ov = self.basis_overlap(r,c,br)
-                der_right = derivatives.at[c,"derivative"]#right.derivative()
+                #der_right = derivatives.at[c,"derivative"]#right.derivative()
 
                 successful = False
                 while not successful :
 
-                    lunghezza = 1
-                    for k in range(self.dim()):
-                        # ATTENZIONE ALLA DERIVATA LOGARITMICA
-                        #numradX = (0.5-random.rand(len(puntiX)))*delta/(opts["N"][k]+2)
-                        #numradY = (0.5-random.rand(len(puntiY)))*delta/(opts["N"][k]+2)
-                        num = opts["N"][k] if am.at[r,c] == True else opts["N2"][k]
-                        lunghezza = lunghezza * num
-                        X[k] = np.random.uniform(br.at[r,("min",k)],br.at[r,("max",k)],num)
-                        Y[k] = np.random.uniform(br.at[c,("min",k)],br.at[c,("max",k)],num)
-
-                        #X[k] = puntiX+numradX
-                        #Y[k] = puntiY+numradY                     
-
-
-                    # devo usare np.meshgrid
-                    mX = np.meshgrid(*X)
-                    mY = np.meshgrid(*Y)
-
-                    if lunghezza != lunghezza0 :
-                        Xintegration = np.zeros(shape=(lunghezza,self.dim()))
-                        Yintegration = Xintegration.copy()
-                        lunghezza0 = lunghezza
-
-                    for k in range(self.dim()):
-                        Xintegration[:,k] = mX[k].flatten()
-                        Yintegration[:,k] = mY[k].flatten()
-
-                    # questo è ottimizzabile
-                    #meshN = len(Xintegration)*len(Yintegration)
-                    lenX = len(Xintegration)
-                    lenXY = lenX*lenX
-                    mesh = np.zeros((lenXY,2),dtype=object)
-                    #mesh.fill(Xintegration[0])
+                    #print(r,"-",c)
                     
-                    #n1 = len(Xintegration)
-                    #n2 = len(Yintegration)
-                    for i in range(lenX):
-                        for j in range(lenX):
-                            k = lenX*i+j
-                            mesh[k,0] = Xintegration[i]
-                            mesh[k,1] = Yintegration[j]
-                    # piccola modifica
-                    #mesh = mesh [ mesh[:,0] != mesh[:,1]  ]
-
-                    # piccola modifica
-                    if self.dim() == 1:
-                        mesh = mesh.astype(float)
-
-                    ###
-                    # VALUTAZIONE DELL'INTEGRALE
-
-                    y = integrate(mesh)
-                    res = np.mean(y)*areaX*areaY
+                    #
+                    res = my_cycle_step(r,c)
 
                     #
                     successful = not np.isnan(res)
@@ -2174,14 +2215,7 @@ class Bspline :
         
         if opts["ready_slp_BEM"] == True and self._ready_slp_BEM == True :
             return self._slp_matrix_BEM       
-
-        #if opts["ready_slp_BEM"] == False:
-        #    self._ready_slp_BEM = False
-
-        #if self._ready_slp_BEM == True :
-        #    return self._slp_matrix_BEM
-        
-        
+ 
         #il = self.index_list()
         #il = [ tuple(i) for i in il ]
         dof = self.dof()
@@ -2198,6 +2232,7 @@ class Bspline :
         opts2 = opts
         opts2["ready_lv_BEM"] = False
         opts2["copy_lv_BEM"] = False
+        opts2["return_both"] = False
         lenXY = len(XY)
         for i in range(lenXY):
             if opts["print"] :
