@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -609,6 +609,10 @@ class Bspline :
                 out = out.astype(self.properties["dtype"]).reshape((len(out,)))
                 #out = out.reshape((len(out,)))
             return out
+        
+    ###
+    def __call__(self,x):
+        return self.evaluate(x)
         
     ### da rivedere
     def derivative(self,axis=-1):        
@@ -2350,8 +2354,10 @@ class Bspline :
         smnp = np.asarray(sm).astype(np.complex)
         lvnp = np.asarray(lv).reshape((len(lv),)).astype(np.complex)
         
-        #
-        sol = scipy.linalg.solve(smnp,lvnp,assume_a="sym") #lo salvo su file
+        # ATTENZIONE
+        # ho sostituito lv con -lv 
+        # perché gD = - trace u_inc
+        sol = scipy.linalg.solve(smnp,-lvnp,assume_a="sym") #lo salvo su file
         
         out = pd.DataFrame(data=sol,index=sm.index,columns=["value"])
      
