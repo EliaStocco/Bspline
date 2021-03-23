@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -1045,7 +1045,7 @@ class Bspline :
         
             
         #
-        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                   "copy_ind_sol_BEM","copy_lv_BEM",                   "interpolation",                   "del-edge","ready_om","ready_sm"]        
+        varTrue = ["ready_sm_BEM","ready_slp_BEM","ready_sol_BEM",                   "ready_ind_sol_BEM","ready_lv_BEM",                   "copy_sm_BEM","copy_slp_BEM","copy_sol_BEM",                   "copy_ind_sol_BEM","copy_lv_BEM",                   "interpolation",                   "del-edge","ready_om","ready_sm","update_slp_BEM"]        
         for v in varTrue :            
             if v not in opts :
                 opts[v] = True
@@ -2183,10 +2183,7 @@ class Bspline :
             persm.drop(i,inplace=True,axis=1)
             
         return persm
-      
-    
-    
-        
+           
     ###
     def get_effective_index(self):   
         il = self.index_list()
@@ -2198,23 +2195,58 @@ class Bspline :
     
     ###
     def single_layer_potential_basis_BEM(self,XY=None,k=None,opts=None):
+        
         # variabile di output
         # matrice con:
         # - righe: punti x dove valutare la soluzione
         # - colonne : funzioni di base
-        #out = pd.DataFrame(index=np.arange(0,len(XY)),columns=lv.index)
+        
+        # tutti i punti che voglio li ho già calcolati
+        # ready = True  -> restituisco i punti richiesti
+        # ready = False -> ricalcolo tutto e restituisco i punti richiesti
+        
+        # nessun punto che voglio è già stato calcolati
+        # ready = True,False -> calcolo tutto e restituisco i punti richiesti
+        
+        # alcuni punti che voglio sono già stati calcolati, altri no
+        # ready = True  -> restituisco i punti richiesti già calcolati, calcolo quelli nuovi
+        # ready = False -> ricalcolo tutto e restituisco i punti richiesti
+        
+        # copy = True -> unisco i due dataframe
+        
         opts = self.prepare_opts(opts)
         
-        if opts["ready_slp_BEM"] == True and self._ready_slp_BEM == True :
-            return self._slp_matrix_BEM       
+        #if opts["ready_slp_BEM"] == True and self._ready_slp_BEM == True :
+        #    return self._slp_matrix_BEM  
+        
+        if opts["print"] :
+            print("single_layer_potential_basis_BEM")
  
+        # poi lo sovrascrivo nel caso
+        newXY = XY.copy()#[ tuple(i) for i in XY]
+        
+        if opts["ready_slp_BEM"] == True :
+            if self._ready_slp_BEM == True :
+                slp = self._slp_matrix_BEM    
+                allnewxy = [ tuple(i) for i in XY]
+                newindex = [ i not in slp.index for i in allnewxy ]
+                newXY = XY[newindex]
+                if len(newXY) == 0 : #li ho già calcolati tutti
+                    #print("ciao")
+                    return slp   
+             
+        lenXY = len(newXY)
+        if opts["print"] :
+            print("Calculating \"partial solution\" for ",lenXY," points")
+ 
+    
         #il = self.index_list()
         #il = [ tuple(i) for i in il ]
         dof = self.dof()
-        outnp = np.zeros(shape=(len(XY),len(dof)),dtype=object)
+        outnp = np.zeros(shape=(len(newXY),len(dof)),dtype=object)
 
         #giusto per definirlo
-        x0 = XY[0,:]
+        #x0 = newXY[0,:]
         # foundamental solution with x fixed
         I = np.complex(0,1)
         def foundamental_x(y):
@@ -2225,37 +2257,67 @@ class Bspline :
         opts2["ready_lv_BEM"] = False
         opts2["copy_lv_BEM"] = False
         opts2["return_both"] = False
-        lenXY = len(XY)
+        
+        #lenXY = len(XY)        
         for i in range(lenXY):
             if opts["print"] :
                 print(i,"/",lenXY,end="\r")
-            x0 = XY[i,:]
+            #x0 = XY[i,:]
+            x0 = newXY[i,:]
             lvx0 = self.load_vector_BEM(foundamental_x,opts2)
             outnp[i] = lvx0["cp"]
         if opts["print"] :
             print("Finished")
 
-        out = pd.DataFrame(data=outnp,index = [ tuple(i) for i in XY] ,columns=dof.index)#["x",il])
-        
-        if opts["copy_slp_BEM"] == True :
-            self._slp_matrix_BEM = out.copy()
+        # inserisco per ora solo quelli calcolati adesso
+        out0 = pd.DataFrame(data=outnp,index = [ tuple(i) for i in newXY] ,columns=dof.index)#["x",il])
+        out = out0
+
+        if opts["update_slp_BEM"] == True :
+            
+            if opts["print"] :
+                print("Updating slp matrix")
+                
+            if self._slp_matrix_BEM is None :
+                self._slp_matrix_BEM = out0.copy()        
+            else :
+                slp = self._slp_matrix_BEM    
+                i1 = np.asarray(slp.index)
+                i2 = np.asarray(out0.index)
+                #index = np.unique(np.append(i1,i2))                
+                index1 = [ tuple(i) not in tuple(i2) for i in i1 ]
+
+                result = pd.concat([slp[index1],out0],verify_integrity=True)
+                self._slp_matrix_BEM = result.copy()
+                
+                outindex = [ tuple(i) for i in XY]
+                columns = out0.columns
+                out = result.loc[outindex,columns]
+
             self._ready_slp_BEM = True
         return out
     
     ###
-    def single_layer_potential_BEM(self,sol,slpB,XY,k,opts=None):
+    def single_layer_potential_BEM(self,sol,XY,k,slpB=None,opts=None):
         
         # sol  : solution of linear system
         # slpB : single layer potential (basis)
         
         opts = self.prepare_opts(opts)
-
-        if opts["ready_sol_BEM"] == False:
-            self._ready_sol_BEM = False
-
-        if self._ready_sol_BEM == True :
-            return self._sol_BEM
         
+        if opts["ready_sol_BEM"] == True and self._ready_sol_BEM == True :
+            return self._sol_BEM      
+        
+        #        
+        if slpB is None :            
+            slpB0 = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts)
+        else :
+            slpB0 = slpB.copy()
+            
+        #
+        index = [ tuple(i) for i in XY]
+        slpB = slpB0.loc[index,slpB0.columns]
+  
         #        
         slpBnp = np.asarray(slpB)        
         solnp = np.asarray(sol["value"])
@@ -2265,7 +2327,7 @@ class Bspline :
 
         #
         out = pd.DataFrame(index=slpB.index,columns=["x","value"])
-        out["x"] = [ tuple(i) for i in XY]
+        out["x"] = index#[ tuple(i) for i in XY]
         out["value"] = outnp
         
         if opts["copy_sol_BEM"] == True :
