@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 
 get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
@@ -151,6 +151,7 @@ import pickle
 import re
 from numpy import random
 import scipy.special
+import scipy.integrate
 
 class Bspline :
     
@@ -1802,7 +1803,9 @@ class Bspline :
        
         if opts["print"] :
             print("stiffness_matrix_BEM")
-
+            
+            
+        wavevector = k 
 
         #
         lunghezza  = 1
@@ -1877,7 +1880,7 @@ class Bspline :
         I = np.complex(0,1)
 
         def foundamental(d):
-            return scipy.special.hankel1(np.full(len(d),0),k*d)*I/4.0  
+            return scipy.special.hankel1(np.full(len(d),0),wavevector*d)*I/4.0  
 
         def integrate_quad(x,y):
             l = left.evaluate(x)
@@ -1888,7 +1891,7 @@ class Bspline :
             yy = self.evaluate(y)#.astype(self.properties["dtype"])
             d = np.asarray([ norm(i) for i in xx-yy ])
             f = foundamental(d)
-            return f*d*l*dl*dr
+            return f*l*r*dl*dr
         
         def integrate(xy):
             #x = xy[:,0]
@@ -1912,67 +1915,7 @@ class Bspline :
         #    
         #mX = None
         #mY = None
-        def my_cycle_step(r,c):
-            # r : row index
-            # c : col index
-            
-            if am.at[r,c] == False:
-                for k in range(self.dim()):
-                    num = opts["N"][k]
-                    X[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
-                    Y[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
-
-            else :                
-                for k in range(self.dim()):
-                    num = opts["N2"][k]
-                    X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
-                    Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
-
-
-            if am.at[r,c] == False :
-
-                # devo usare np.meshgrid
-                mX = np.meshgrid(*X)
-                mY = np.meshgrid(*Y)
-
-
-                for k in range(self.dim()):
-                    Xintegration[:,k] = mX[k].flatten()
-                    Yintegration[:,k] = mY[k].flatten()
-
-                for i in range(lenX):
-                    for j in range(lenX):
-                        k = lenX*i+j
-                        mesh[k,0] = Xintegration[i]
-                        mesh[k,1] = Yintegration[j]
-
-                y = integrate(mesh)
-
-            else :    
-
-                mX = np.meshgrid(*X2)
-                mY = np.meshgrid(*Y2)
-
-                for k in range(self.dim()):
-                    Xintegration2[:,k] = mX[k].flatten()
-                    Yintegration2[:,k] = mY[k].flatten()
-
-                for i in range(lenX2):
-                    for j in range(lenX2):
-                        k = lenX2*i+j
-                        mesh2[k,0] = Xintegration2[i]
-                        mesh2[k,1] = Yintegration2[j]
-
-                y = integrate(mesh2)
-
-            ###
-            # VALUTAZIONE DELL'INTEGRALE
-
-            #y = integrate(mesh)
-            #print(y)
-            res = np.nanmean(y)*areaX*areaY
-            return res
-
+        
 
        
         ###
@@ -1999,7 +1942,7 @@ class Bspline :
 
             for j in range(i,n):
 
-                c = it[j]#am.columns[j]
+                c = it[j]
 
                 #
                 if opts["print"] :
@@ -2010,31 +1953,83 @@ class Bspline :
                 if areaY == 0.0 :
                     continue
 
-                # LA MATRICE E' DENSA
-                #if am.at[r,c] is False :
-                #    continue
-
                 #
                 right.set_cp(c,1.0)
-                #ov = self.basis_overlap(r,c,br)
-                #der_right = derivatives.at[c,"derivative"]#right.derivative()
-
-                successful = False
-                while not successful :
+                
+                
+                #successful = False #not opts["random"]
+                #while not successful :
 
                     #print(r,"-",c)
                     
                     #
-                    res = my_cycle_step(r,c)
+                    #res = my_cycle_step(r,c)
+                    
+                if am.at[r,c] == False:
+                    for k in range(self.dim()):
+                        num = opts["N"][k]
+                        X[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                        Y[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
 
-                    #
-                    successful = not np.isnan(res)
+                else :                
+                    for k in range(self.dim()):
+                        num = opts["N2"][k]
+                        X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                        Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
 
-                    if not successful :
-                        print("found nan value for [",r,",",c,"]: repeating the cycle")
 
-                    ###
-                    # FINE
+                if am.at[r,c] == False :
+
+                    # devo usare np.meshgrid
+                    mX = np.meshgrid(*X)
+                    mY = np.meshgrid(*Y)
+
+
+                    for k in range(self.dim()):
+                        Xintegration[:,k] = mX[k].flatten()
+                        Yintegration[:,k] = mY[k].flatten()
+
+                    for i in range(lenX):
+                        for j in range(lenX):
+                            k = lenX*i+j
+                            mesh[k,0] = Xintegration[i]
+                            mesh[k,1] = Yintegration[j]
+
+                    y = integrate(mesh)
+
+                else :    
+
+                    mX = np.meshgrid(*X2)
+                    mY = np.meshgrid(*Y2)
+
+                    for k in range(self.dim()):
+                        Xintegration2[:,k] = mX[k].flatten()
+                        Yintegration2[:,k] = mY[k].flatten()
+
+                    for i in range(lenX2):
+                        for j in range(lenX2):
+                            k = lenX2*i+j
+                            mesh2[k,0] = Xintegration2[i]
+                            mesh2[k,1] = Yintegration2[j]
+
+                    y = integrate(mesh2)
+
+                ###
+                # VALUTAZIONE DELL'INTEGRALE
+
+                #y = integrate(mesh)
+                #print(y)
+                res = np.nanmean(y)*areaX*areaY
+
+                #
+                #if opts["random"] == True :
+                #    successful = not np.isnan(res)
+
+                #if not successful :
+                #    print("found nan value for [",r,",",c,"]: repeating the cycle")
+
+                ###
+                # FINE
 
 
                 #    
@@ -2100,6 +2095,12 @@ class Bspline :
             d0 = der.evaluate(x)
             d = [ norm(i) for i in d0 ]
             return a*b*d
+        
+        if opts["random"] == True:
+            generate = np.random.uniform
+        else :
+            generate = np.linspace
+
 
         for i in il :
 
@@ -2110,10 +2111,11 @@ class Bspline :
                 continue   
                 
             for k in range(self.dim()):
-                X[k] = np.random.uniform(br.at[i,("min",k)],br.at[i,("max",k)],opts["N"][k])
-
+                num = opts["N"][k]
+                X[k] = generate(br.at[i,("min",k)],br.at[i,("max",k)],num)
+                    
             m = np.meshgrid(*X)
-            for k in range(0,self.dim()):
+            for k in range(self.dim()):
                 Xintegration[:,k] = m[k].flatten()
 
             y = integrate (Xintegration)
@@ -2122,16 +2124,6 @@ class Bspline :
             scalar.set_cp(i,0.0)
             
         # TENGO CONTO DELLA PERIODICITA'
-        #dof = self.dof()
-        #perlv = out.copy()
-        #delindex = [ i for i in out.index if i not in dof.index ]
-        ##perindex = [ self.get_periodic_index(i) for i in delindex  ]
-        ##index = out.index
-        #for j in delindex :
-        #    jp = self.get_periodic_index(j)
-        #    perlv.at[jp,"cp"] += perlv.at[j,"cp"]
-        #for i in delindex:
-        #    perlv.drop(i,inplace=True,axis=0)
         perlv = self.make_vector_periodic(out)
    
         #
