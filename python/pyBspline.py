@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
-get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
+#get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 
 # ## Shape class
 
-# In[2]:
+# In[1]:
 
 
 class shape :
@@ -36,7 +36,7 @@ class shape :
 
 # ## Knot vector class
 
-# In[3]:
+# In[2]:
 
 
 import numpy as np
@@ -117,26 +117,9 @@ def periodic_kv(xmin,xmax,p,n):
     v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
     return knot_vector(p,n+1+p,v,check_open=False) 
 
-    # if xmin = 0. and xmax = 1.
-    # kv.knots()[P]   = 0.
-    # kv.knots()[N+P] = 1.
-    # bs.evaluate(0.) == bs.evaluate(1.)
-
-
-    #v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
-    #v = xmin + (v0 - v0[p])/v0[n+1]*(xmax-xmin)
-    #return knot_vector(p,n+p+1,v,check_open=False) 
-    #v0 = np.linspace(0.,1.0,n+p+p,endpoint=True)
-    #v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
-    #return knot_vector(p,n+p+1,v,check_open=False)  
-    #v0 = np.linspace(0.,1.0,n+1+p,endpoint=True)
-    #v = xmin + (v0 - v0[p])/v0[n-p]*(xmax-xmin)
-    #return knot_vector(p,n,v,check_open=False)  
-
-
 # ## Bspline class
 
-# In[4]:
+# In[5]:
 
 
 import copy
@@ -469,9 +452,11 @@ class Bspline :
                 i=i+1
             print("\n--------------------")        
     ###
-    def dim(self)  : return self._sh.dim()
+    def dim(self)  : 
+        return self._sh.dim()
     ###
-    def codim(self): return self._sh.codim()            
+    def codim(self): 
+        return self._sh.codim()            
     ###
     def _find_k(self,x,t) :
         #print("x:",x)
@@ -513,9 +498,10 @@ class Bspline :
         #valuto la funzione
         #if der == False :
         return self._deBoor_private(k,x,t,c,p)
-    
-    ### https://en.wikipedia.org/wiki/De_Boor%27s_algorithm
+    ### 
     def _deBoor_private(self,k: int, x, t, c, p: int) :
+        
+        #https://en.wikipedia.org/wiki/De_Boor%27s_algorithm
         #Evaluates S(x).
         #
         #Arguments
@@ -540,9 +526,10 @@ class Bspline :
                     d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
 
         return d[p]#.reshape(len(d[p],))
-    ### https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/surface/bspline-de-boor.html
+    ###
     def _iterative_deBoor(self,x) :
         
+        # https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/surface/bspline-de-boor.html
         # coordinate del punto in cui valutare la funzione
         # prendo tutte le coordinate tranne il primo
         x_surf = x[1:]      
@@ -609,11 +596,9 @@ class Bspline :
                 out = out.astype(self.properties["dtype"]).reshape((len(out,)))
                 #out = out.reshape((len(out,)))
             return out
-        
     ###
     def __call__(self,x):
-        return self.evaluate(x)
-        
+        return self.evaluate(x)    
     ### da rivedere
     def derivative(self,axis=-1):        
         
@@ -1188,7 +1173,7 @@ class Bspline :
                 #dof_int.drop( delindex ,inplace = True,axis=0)
                 #dof_int.drop( delindex ,inplace = True,axis=1)
                 
-                dof_int = self.make_matrix_periodic(om)
+                dof_int = make_matrix_periodic(self,self,om)
 
 
             else :
@@ -1797,7 +1782,7 @@ class Bspline :
     ###
     #BEM
     
-    ##
+    ###
     def stiffness_matrix_BEM(self,k=None,opts=None):
         
         opts = self.prepare_opts(opts)
@@ -1843,7 +1828,7 @@ class Bspline :
         X2 = X.copy()
         for k in range(self.dim()):
             X[k] =  np.full(opts["N"][k],0.0)
-            X[k] =  np.full(opts["N2"][k],0.0)
+            X2[k] =  np.full(opts["N2"][k],0.0)
         Y = X.copy()     
         Y2 = X2.copy()
 
@@ -2050,7 +2035,7 @@ class Bspline :
             left.set_cp(r,0.0)
 
         # TENGO CONTO DELLA PERIODICITA'        
-        persm = self.make_matrix_periodic(out)
+        persm = make_matrix_periodic(self,self,out)
 
         #    
         if opts["copy_sm_BEM"] == True :
@@ -2411,28 +2396,12 @@ class Bspline :
         slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k,opts=opts)
                 
         # convert into numpy array
-        Xnp,Valnp = self.sol_to_np_BEM(slp)
+        Xnp,Valnp = sol_to_np_BEM(slp)
         
         #self._sol_BEM = slp.copy()
         #self._ready_sol_BEM = True
         return slp,Xnp,Valnp
-    
-    ###
-    def sol_to_np_BEM(self,sol):
-        # convert into numpy array
-        r = len(sol)
-        c = len(sol["x"][0])
-
-        Xnp = np.zeros(shape=(r,c))
-
-        for i in range(r):
-            for j in range(c):
-                Xnp[i,j] = sol["x"][i][j]
-
-        #
-        Valnp = np.asarray(sol["value"],dtype=np.complex)
-        return Xnp,Valnp
-                    
+                     
     ###
     def save(self,variable,filename):
         if variable == "sm":
@@ -2502,7 +2471,7 @@ class Bspline :
             var["value"] = [np.complex(i) for i in np.asarray(var["value"])]
             self._sol_BEM = var.copy()
             self._ready_sol_BEM = True   
-            Xnp,Valnp = self.sol_to_np_BEM(var)
+            Xnp,Valnp = sol_to_np_BEM(var)
             return var,Xnp,Valnp
         
         elif variable == "ind_sol-BEM":
@@ -2524,7 +2493,419 @@ class Bspline :
             #self._cp = var.copy()
         
         return var
+   
+#######################################
 
+_ready_lv_BEM_disc = False
+_ready_sm_BEM_disc = False
+
+_sm_BEM_disc = None
+_lv_BEM_disc = None
+
+###
+def sol_to_np_BEM(sol):
+    # convert into numpy array
+    r = len(sol)
+    c = len(sol["x"][0])
+
+    Xnp = np.zeros(shape=(r,c))
+
+    for i in range(r):
+        for j in range(c):
+            Xnp[i,j] = sol["x"][i][j]
+
+    #
+    Valnp = np.asarray(sol["value"],dtype=np.complex)
+    return Xnp,Valnp
+ 
+### 
+def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
+    
+    wavevector = k 
+    
+    dim = bsLeft.dim()
+
+    #
+    lunghezza  = 1
+    for k in range(dim):
+        lunghezza = lunghezza*opts["N"][k]
+    Xintegration = np.zeros(shape=(int(lunghezza),dim))
+    Yintegration = Xintegration.copy()
+    
+    #
+    lenXL = len(Xintegration)
+    lenXR = len(Yintegration)
+    lenXY = lenXL*lenXR
+    mesh = np.zeros((lenXY,2),dtype=object)
+    if dim == 1:
+        mesh = mesh.astype(float)
+
+
+    X = np.full(dim,0.0,dtype=object)
+    Y = np.full(dim,0.0,dtype=object)
+    for k in range(dim):
+        X[k] =  np.full(opts["N-L"][k],0.0)
+        Y[k] =  np.full(opts["N-R"][k],0.0)
+    
+    #
+    ilL = bsLeft.index_list()
+    itL = [ tuple(i) for i in ilL ]
+    #
+    ilR = bsRight.index_list()
+    itR = [ tuple(i) for i in ilR ]
+    # out variable
+    out = pd.DataFrame(0.0,index=itL,columns=itR,dtype=np.complex)
+
+    
+    # basis range
+    brL = bsLeft.basis_range()
+    brR = bsRight.basis_range()
+    areaL = brL["area"]
+    areaR = brR["area"]
+    
+    # derivative
+    derL = bsLeft.derivative()
+    derR = bsRight.derivative()
+    
+    # basis function: left 
+    left = bsLeft._scalar(opts)
+    left.clear_cp()
+    
+    # basis function: right
+    right = bsRight._scalar(opts)
+    right.clear_cp()
+    
+   
+    # unità immaginaria
+    I = np.complex(0,1)
+
+    def foundamental(d):
+        return scipy.special.hankel1(np.full(len(d),0),wavevector*d)*I/4.0  
+
+    def integrate_quad(x,y):
+        l = left.evaluate(x)
+        r = right.evaluate(y)#.conjugate()
+        dl = [ norm(i) for i in derL.evaluate(x) ]
+        dr = [ norm(i) for i in derR.evaluate(y) ]
+        xx = bsLeft.evaluate(x)#.astype(self.properties["dtype"])
+        yy = bsRight.evaluate(y)#.astype(self.properties["dtype"])
+        d = np.asarray([ norm(i) for i in xx-yy ])
+        f = foundamental(d)
+        return f*l*r*dl*dr
+
+    def integrate(xy):
+        return integrate_quad(xy[:,0],xy[:,1])
+
+    if opts["random"] == True:
+        generate = np.random.uniform
+    else :
+        generate = np.linspace
+
+
+    ###
+    # CICLO
+    successful = False
+    res =  np.complex(0,0)   
+    conta = 1
+    tot = int(len(itL)*(len(itR)))    
+    
+    for r in itL:
+
+        #
+        areaX = areaL[r]
+        if areaX == 0.0 :
+            continue                    
+
+        #
+        left.set_cp(r,1.0)
+        
+        for c in itR:
+            
+            #
+            if opts["print"] :
+                print(conta,"/",tot,":",r,"-",c,end="\r")
+
+            #
+            areaY = areaR[c]
+            if areaY == 0.0 :
+                continue
+
+            #
+            right.set_cp(c,1.0)
+
+            #
+            for k in range(dim):
+                X[k] = generate(brL.at[r,("min",k)],brL.at[r,("max",k)],opts["N-L"][k])
+                Y[k] = generate(brR.at[c,("min",k)],brR.at[c,("max",k)],opts["N-R"][k])
+
+            # devo usare np.meshgrid
+            mX = np.meshgrid(*X)
+            mY = np.meshgrid(*Y)
+
+            for k in range(dim):
+                Xintegration[:,k] = mX[k].flatten()
+                Yintegration[:,k] = mY[k].flatten()
+
+            for i in range(lenXL):
+                for j in range(lenXR):
+                    k = lenXL*i+j
+                    mesh[k,0] = Xintegration[i]
+                    mesh[k,1] = Yintegration[j]
+
+            y = integrate(mesh)
+
+            
+            ###
+            # VALUTAZIONE DELL'INTEGRALE
+
+            res = np.nanmean(y)*areaX*areaY
+            
+            ###
+            # FINE
+
+
+            #    
+            out.at[r,c] = res
+            
+            #cancello
+            right.set_cp(c,0.0)
+
+            #incremento
+            conta = conta +1
+
+            #cancello
+        left.set_cp(r,0.0)
+
+    # TENGO CONTO DELLA PERIODICITA'        
+    persm = make_matrix_periodic(bsLeft,bsRight,out)
+
+    if opts["print"] :
+        print("Finished")
+    return persm  
+
+###
+def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
+    
+    global _ready_sm_BEM_disc
+    global _sm_BEM_disc
+    
+    opts = prepare_opts(opts)
+    
+    if opts["ready_sm_BEM_disc"] == True and _ready_sm_BEM_disc == True :
+        return _sm_BEM_disc
+        
+    index,mi,last,first = multi_index_disconnected(bs,names,opts)
+    df = pd.DataFrame(columns=index,index=index)
+    SM = df.reindex(columns=mi,index=mi)
+
+    
+    # elementi sulla diagonale
+    n = len(bs)
+    for i in range(n):     
+        if opts["print"] == True:
+            print("diagonal:",i,"/",n,end="\r")
+        b = bs[i]
+        
+        b.prepare_opts(opts)
+        
+        sm = b.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
+
+        SM.loc[(i,first[i]):(i,last[i]),(i,first[i]):(i,last[i])] = np.asarray(sm)
+            
+        
+    # elementi fuori diagonale
+    conta = 1
+    nn = int(n*(n+1)/2)
+    for i in range(n):
+        for j in range(i+1,n):
+            if opts["print"] == True:
+                print("off diagonal:",conta,"/",nn,end="\r")
+            
+            bsLeft  = bs[i]
+            bsRight = bs[j]
+            sm = stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k,opts)
+            
+            SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = np.asarray(sm)
+            SM.loc[(j,first[j]):(j,last[j]),(i,first[i]):(i,last[i])] = np.asarray(sm).T
+            
+            conta += 1
+            
+    if opts["copy_sm_BEM_disc"] == True :
+        _sm_BEM_disc = SM
+        _ready_sm_BEM_disc = True
+    return SM
+   
+###   
+def multi_index_disconnected(bs,names,opts):
+        
+    index = []
+    first = []
+    last  = []
+    for i in range(len(bs)):
+        #il = bs[i].index_list()
+        it = bs[i].dof().index#[tuple(j) for j in il ]
+        first = first + [it[0]]
+        last  = last  + [it[-1]]
+        indexbs = [ (names[i],j) for j in it ]
+        index = index + indexbs
+
+    #
+    mi = pd.MultiIndex.from_tuples(index)
+    #df = pd.DataFrame(columns=index,index=index)
+  
+    return index,mi,last,first
+   
+###   
+def load_vector_BEM_disconnected(bs,uinc,names,opts):
+
+    opts = prepare_opts(opts)
+    
+    global _ready_lv_BEM_disc
+    global _lv_BEM_disc
+
+    if opts["ready_lv_BEM_disc"] == True and _ready_lv_BEM_disc == True :
+        return _lv_BEM_disc
+    
+    index,mi,last,first = multi_index_disconnected(bs,names,opts)  
+    LV = pd.DataFrame(columns=["cp"],index=index)   
+    
+    # elementi sulla diagonale
+    for i in range(len(bs)):        
+        b = bs[i]
+        
+        b.prepare_opts(opts)
+        
+        lv = b.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file  
+        
+        LV.loc[(i,first[i]):(i,last[i]),"cp"] = np.asarray(lv["cp"])
+        
+    if opts["copy_lv_BEM_disc"] == True :
+        _lv_BEM_disc = LV.copy()
+        _ready_lv_BEM_disc = True
+        
+    return LV
+
+###
+def single_layer_potential_basis_BEM_disconnected(bs,XY,names,opts):
+    
+    index,mi,last,first = multi_index_disconnected(bs,names,opts) 
+    xy = [tuple(i) for i in XY]
+    SLPB = pd.DataFrame(columns=index,index=xy)   
+    
+    # elementi sulla diagonale
+    for i in range(len(bs)):        
+        b = bs[i]
+        
+        b.prepare_opts(opts)
+        
+        slpB = b.single_layer_potential_basis_BEM(XY=XY,opts=opts) #lo salvo su file  
+        
+        SLPB.loc[xy,(i,first[i]):(i,last[i])] = slpB
+        
+    return SLPB
+    
+###
+def make_matrix_periodic(Left,Right,out):
+    
+    dofL = Left.dof()
+    dofR = Right.dof()
+            
+    persm = out.copy()
+
+    indexL = out.index
+    indexR = out.columns
+
+    delindexL = [ i for i in indexL if i not in dofL.index ]
+    perindexL = [ Left.get_periodic_index(i) for i in delindexL  ]
+
+    delindexR = [ i for i in indexR if i not in dofR.index ]
+    perindexR = [ Right.get_periodic_index(i) for i in delindexR  ]
+
+
+    for i in indexL:
+        for j in perindexR :
+            #ii = self.get_periodic_index(i)
+            jp = Right.get_periodic_index(j)
+            persm.at[i,j] += persm.at[i,jp]
+
+    for i in indexR:
+        for j in perindexL :
+            #ii = self.get_periodic_index(i)
+            jp = Left.get_periodic_index(j)
+            persm.at[j,i] += persm.at[jp,i]
+            #persm.at[j,i] = persm.at[i,j]
+
+    for i in delindexL:
+        persm.drop(i,inplace=True,axis=0)
+    for i in delindexR:
+        persm.drop(i,inplace=True,axis=1)
+        
+    return persm
+ 
+###
+def prepare_opts(opts,bs=None):
+
+    if "ready_lv_BEM_disc" not in opts:
+        opts["ready_lv_BEM_disc"] = True
+    if "copy_lv_BEM_disc" not in opts:
+        opts["copy_lv_BEM_disc"] = True
+        
+    if "ready_sm_BEM_disc" not in opts:
+        opts["ready_sm_BEM_disc"] = True
+    if "copy_sm_BEM_disc" not in opts:
+        opts["copy_sm_BEM_disc"] = True 
+        
+    if "names" not in opts and bs is not None :
+        opts["names"] = [ i for i in np.arange(len(bs)) ]  
+        
+    if "N" not in opts and bs is not None :
+        opts["N"] = np.full(bs[0].dim(),4,dtype=int)
+    if "N-L" not in opts :
+        opts["N-L"] = opts["N"]
+    if "N-R" not in opts :
+        opts["N-R"] = opts["N"]
+        
+    return opts
+
+### 
+def BEM_disconnected(bs,uinc=None,k=None,XY=None,opts=None):
+    
+    #SM = np.zeros(shape=(len(bs),len(bs)),dtype=object)
+    
+    opts = prepare_opts(opts,bs)
+    
+    names = opts["names"]
+    
+    LV = load_vector_BEM_disconnected(bs,uinc,names,opts)
+    SM = stiffness_matrix_BEM_disconnected(bs,k,names,opts)    
+    
+    #Galerkin
+    smnp = np.asarray(SM).astype(np.complex)
+    lvnp = np.asarray(LV).reshape((len(LV),)).astype(np.complex)
+    # solution of Galerkin method
+    Ind_Sol = scipy.linalg.solve(smnp,-lvnp,assume_a="sym")
+    ind_sol = pd.DataFrame(data=Ind_Sol,index=SM.index,columns=["value"])
+    out = pd.DataFrame(data=ind_sol,index=SM.index,columns=["value"])
+    
+    # single layer potential basis  
+    xy = [tuple(i) for i in XY]
+    #columns = names
+    SLP = pd.DataFrame(columns= names,index=xy) 
+    index,mi,last,first = multi_index_disconnected(bs,names,opts)  
+    for i in range(len(bs)):
+        b = bs[i]
+        ind_sol2 = ind_sol[(i,first[i]):(i,last[i])]
+        slp = b.single_layer_potential_BEM(sol=ind_sol2,XY=XY,k=k,opts=opts)
+        SLP[names[i]] = slp["value"]
+
+    SLP["value"] = SLP.mean(axis=1)
+    SLP["x"] = SLP.index
+    SLP  = SLP [ ["x","value"] + names ]
+    
+    Xnp,Valnp = sol_to_np_BEM(SLP)
+        
+    return SLP,Xnp,Valnp
+    
 ###
 def norm(x):
     return np.sqrt(np.sum(np.power(x,2.0)))        
@@ -2537,7 +2918,6 @@ def tuple_from_str(string,comand=r'[0-9]+'):
 def tuple_float_from_str(string,comand=r"[+-]?\d+(?:\.\d+)?\.[+-]?\d+(?:\.\d+)?"):
     return tuple(map(float, re.findall(comand, string)))
 
-    
 ###        
 def overlaps(a, b):
     c = [ max(a[0],b[0]) , min(a[1],b[1]) ]
@@ -2548,5 +2928,4 @@ def overlaps(a, b):
         return c
 
 
-# 
-# 
+

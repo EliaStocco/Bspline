@@ -1,21 +1,8 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[8]:
-
-
-get_ipython().system('jupyter nbconvert --to script FFT.ipynb')
-
-
-# # FFT
-
-# In[50]:
-
-
 from scipy.fft import fft, ifft, fftfreq, fftshift
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import scipy.special
 
 def FFT(y,x=None,opts=None):
     
@@ -53,7 +40,7 @@ def FFT(y,x=None,opts=None):
     if opts["plot"] == True:
         
         if x is None:
-            x = np.linspace(xmin,xmax , N, endpoint=False)
+            x = np.linspace(opts["xmin"],opts["xmax"] , N, endpoint=False)
         #
         if opts["fig"] is None:
             fig = plt.figure ( 0 , figsize = ( 15 , 5 ) )
@@ -94,91 +81,48 @@ def FFT(y,x=None,opts=None):
     return out
 
 
-# In[51]:
+def analytic_solution_circle(uinc,XY,wmin,wmax,radius,wavevector,x=None,opts=None):
+    
+    if opts is None:
+        opts = {}
+    if "return" not in opts:
+        opts["return"] = "np"
+    
+    fft = FFT(uinc,opts=opts)
+    
+    # converto un punto in 2D in un numero complesso
+    z = np.asarray([ np.complex(i[0],i[0]) for i in XY ])
+    r = np.absolute(z)
+    theta = np.angle(z)
+    
+    # considero solo un range di frequenze 
+    # perché scipy.special.hankel1 mi da problemi per alte frequenze    
+    Z = np.arange(wmin,wmax+1)#fft.index
+    coeff = np.zeros(shape=(len(r),len(Z)),dtype=np.complex)
+    
+    #devo normalizzare i coefficienti
+    norm = np.sqrt(len(uinc))
+    den  =  np.asarray([ fft.loc[ i ]/( scipy.special.hankel1(i,radius*wavevector) * norm ) for i in Z ])
+    den = den.reshape((len(den),))
+    
+    #
+    expo = np.exp(1.j*np.outer(theta,Z))
 
+    for i in range(len(r)) : 
+        coeff[i,:] = np.multiply(den,scipy.special.hankel1(Z,r[i]*wavevector))
 
-import numpy as np
-
-xmin = 0.
-xmax = 1.
-N=1000
-
-x = np.linspace(xmin,xmax , N, endpoint=False)
-w = 10
-y = np.exp(1.j * w * x *2*np.pi)# + np.exp(1.j * 3 * x * 2*np.pi)
-
-out = FFT(y,x,opts={"plot":True})
-
-
-# In[54]:
-
-
-#inv = np.asarray(out["fft"])
-#xinv = np.asarray(out.index)
-orig = FFT(out["fft"],x,opts={"plot":True,"inv":True})
-
-
-# In[128]:
-
-
-import scipy.special
-
-wavevector = 30
-radius = 1.0
-k = wavevector
-R = radius
-def H_coeff(l,r):
-    return scipy.special.hankel1(l,k*r)/scipy.special.hankel1(l,k*R)
-
-r_array = np.linspace(4,10,100)
-
-analytic_x = pd.DataFrame(index=r_array,columns=out.index,dtype=np.complex)
-
-for r in r_array:
-    for i in out.index:
-        #print(i,"-",r,end="\r")
-        analytic_x.at[r,i] = - out.at[i,"fft"] * H_coeff(i,r)
-
-
-# In[148]:
-
-
-l = i
-scipy.special.hankel1(499,100)
-
-
-# In[144]:
-
-
-k*R
-
-
-# In[129]:
-
-
-analytic_x
-
-
-# In[126]:
-
-
-
-analytic = pd.DataFrame(index=r_array,columns=out.index,dtype=np.complex)
-analytic_np = np.asarray(analytic)
-analytic_x_np = np.asarray(analytic_x)
-for r in range(len(r_array)):
-    analytic_np[r,:] = FFT(analytic_x_np[r,:],opts={"inv":True})["fft"]
-analytic = pd.DataFrame(data=analytic_np,index=r_array,columns=out.index,dtype=np.complex)
-
-
-# In[127]:
-
-
-analytic
-
-
-# In[ ]:
-
-
-
-
+    analytic = - np.multiply(coeff,expo).sum(axis=1)
+    index = [tuple(i) for i in XY]
+    out = pd.DataFrame(index=index,columns=["xy","value"],dtype=object)
+    out["xy"] = [ i  for i in XY]
+    out["value"] = analytic    
+    if opts["return"] == "both":
+        return out,analytic
+    elif opts["return"] == "pd":
+        return out
+    elif opts["return"] == "np":
+        return analytic
+    else :
+        print("error: return must be \"both\",\"pd\" or \"np\"")
+        return None
+    
