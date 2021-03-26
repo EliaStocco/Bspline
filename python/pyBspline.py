@@ -346,6 +346,9 @@ class Bspline :
         #    return out[0]
         
     ###
+    def copy(self):
+        return copy.deepcopy(self)
+    ###
     def dof(self):
         il = self.index_list()
         it = [tuple(i) for i in il ]
@@ -387,6 +390,16 @@ class Bspline :
         
         #self_ready_lv = False
         return True                                     
+    
+    ###
+    def traslate_cp(self,trasl):
+        trasl = np.asarray(trasl)
+        dof = self.dof()
+        for i in dof.index:
+            cp = self.get_cp(i)
+            self.set_cp(i,cp+trasl)
+        return
+    
     ### some function returing some variables, not very usefull...
     def knots_vectors(self): 
         return self._kv.copy()
@@ -2698,19 +2711,32 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
     df = pd.DataFrame(columns=index,index=index)
     SM = df.reindex(columns=mi,index=mi)
 
+    calculated = []
     
     # elementi sulla diagonale
     n = len(bs)
     for i in range(n):     
         if opts["print"] == True:
             print("diagonal:",i,"/",n,end="\r")
-        b = bs[i]
-        
-        b.prepare_opts(opts)
-        
+            
+        j = i
+        dest = (i,j) 
+        if dest in opts["copy-destination"] :
+            k = opts["copy-destination"].index(dest)
+            src = opts["copy-source"][k]
+            if src in calculated:
+                l,r = opts["copy-source"][opts["copy-source"].index(src)]
+                SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
+                SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
+                continue
+                
+        #else :
+        b = bs[i]            
+        b.prepare_opts(opts)            
         sm = b.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
-
         SM.loc[(i,first[i]):(i,last[i]),(i,first[i]):(i,last[i])] = np.asarray(sm)
+        
+        calculated = calculated + [(i,j)]
             
         
     # elementi fuori diagonale
@@ -2720,6 +2746,16 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
         for j in range(i+1,n):
             if opts["print"] == True:
                 print("off diagonal:",conta,"/",nn,end="\r")
+              
+            dest = (i,j) 
+            if dest in opts["copy-destination"] :
+                k = opts["copy-destination"].index(dest)
+                src = opts["copy-source"][k]
+                if src in calculated:
+                    l,r = opts["copy-source"][opts["copy-source"].index(src)]
+                    SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
+                    SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
+                    continue
             
             bsLeft  = bs[i]
             bsRight = bs[j]
@@ -2728,6 +2764,7 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
             SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = np.asarray(sm)
             SM.loc[(j,first[j]):(j,last[j]),(i,first[i]):(i,last[i])] = np.asarray(sm).T
             
+            calculated = calculated + [(i,j)]
             conta += 1
             
     if opts["copy_sm_BEM_disc"] == True :
@@ -2865,6 +2902,15 @@ def prepare_opts(opts,bs=None):
     if "N-R" not in opts :
         opts["N-R"] = opts["N"]
         
+    if "equal" not in opts:
+        opts["equal"] = []
+        
+    opts["copy-source"] = []
+    opts["copy-destination"] = []
+    for i in opts["equal"]:
+        opts["copy-source"] += [i[0]]
+        opts["copy-destination"] += [i[1]]
+            
     return opts
 
 ### 
