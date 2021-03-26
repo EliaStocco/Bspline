@@ -21,17 +21,19 @@ def FFT(y,x=None,opts=None):
         opts["ax1"] = 122
     if "inv" not in opts:
         opts["inv"] = False
+    if "norm" not in opts:
+        opts["norm"] = "ortho"
     
     y = np.asarray(y)
     N = len(y)
     
     if opts["inv"] == False :
-        yf = fft(y,norm="ortho")
+        yf = fft(y,norm=opts["norm"])
         xf = fftshift(fftfreq(N)*N).astype(int)
         yplot = fftshift(yf)   
     else :
         yf = fftshift(y)   
-        yplot = ifft(yf,norm="ortho")
+        yplot = ifft(yf,norm=opts["norm"])
         xf = fftshift(fftfreq(N)*N).astype(int)
         
      
@@ -79,19 +81,20 @@ def FFT(y,x=None,opts=None):
         plt.show()
 
     return out
-
-
 def analytic_solution_circle(uinc,XY,wmin,wmax,radius,wavevector,x=None,opts=None):
     
     if opts is None:
         opts = {}
     if "return" not in opts:
         opts["return"] = "np"
+    #if "norm" not in opts:
+    #opts["norm"] = None
     
     fft = FFT(uinc,opts=opts)
+    NN = np.sqrt(len(fft))
     
     # converto un punto in 2D in un numero complesso
-    z = np.asarray([ np.complex(i[0],i[0]) for i in XY ])
+    z = np.asarray([ np.complex(i[0],i[1]) for i in XY ])
     r = np.absolute(z)
     theta = np.angle(z)
     
@@ -100,22 +103,25 @@ def analytic_solution_circle(uinc,XY,wmin,wmax,radius,wavevector,x=None,opts=Non
     Z = np.arange(wmin,wmax+1)#fft.index
     coeff = np.zeros(shape=(len(r),len(Z)),dtype=np.complex)
     
-    #devo normalizzare i coefficienti
-    norm = np.sqrt(len(uinc))
-    den  =  np.asarray([ fft.loc[ i ]/( scipy.special.hankel1(i,radius*wavevector) * norm ) for i in Z ])
-    den = den.reshape((len(den),))
-    
     #
-    expo = np.exp(1.j*np.outer(theta,Z))
-
-    for i in range(len(r)) : 
-        coeff[i,:] = np.multiply(den,scipy.special.hankel1(Z,r[i]*wavevector))
-
-    analytic = - np.multiply(coeff,expo).sum(axis=1)
+    rw = radius*wavevector
+    #
+    for i in range(len(z)):
+        for j in range(len(Z)):
+            a = fft.at[Z[j],"fft"]/NN
+            b = scipy.special.hankel1(Z[j],r[i]*wavevector)
+            c = scipy.special.hankel1(Z[j],rw)
+            d = np.exp(1.j*Z[j]*theta[i])
+            coeff[i,j] = - a*b*d/c
+    
+    analytic = coeff.sum(axis=1)
     index = [tuple(i) for i in XY]
-    out = pd.DataFrame(index=index,columns=["xy","value"],dtype=object)
+    out = pd.DataFrame(index=index,columns=["xy","r","theta","value"],dtype=object)
     out["xy"] = [ i  for i in XY]
-    out["value"] = analytic    
+    out["r"] = r   
+    out["theta"] = theta   
+    out["value"] = analytic   
+
     if opts["return"] == "both":
         return out,analytic
     elif opts["return"] == "pd":

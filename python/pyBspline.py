@@ -194,6 +194,7 @@ class Bspline :
             else :
                 print ("Control points error : wrong dimensions")
                 raise Exception()        
+    
     ### function called by __init__
     def init_knot(self,sh,knots):
         
@@ -276,6 +277,7 @@ class Bspline :
         self._ready_trace = [ False for i in range(self.dim())]
         #print("self._cp : ",self._cp)
         return self    
+    
     ###
     def copy(self):
         return copy.copy(self)    
@@ -288,8 +290,10 @@ class Bspline :
         return np.zeros(self._sh.codim(),dtype=self.properties["dtype"])
     #def Type_in  (self) : #da rifare
     #    return np.zeros(shape=(self._sh.dim(),1))
+    ###
     def Index_t  (self) : #ok
         return np.zeros(shape=(self._sh.dim(),1),dtype=int)    
+    
     ### get control point value/coordinates
     def get_cp (self,index,check=True) :        
         try :
@@ -315,6 +319,7 @@ class Bspline :
             if j != i :
                 cp.at[i,"periodic"] = j
         return cp
+    
     ###
     def get_periodic_index(self,index):
         #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
@@ -342,12 +347,11 @@ class Bspline :
                 out[i] = j
         #if self.dim() != 1 :
         return tuple(out)
-        #else :
-        #    return out[0]
         
     ###
     def copy(self):
         return copy.deepcopy(self)
+    
     ###
     def dof(self):
         il = self.index_list()
@@ -409,6 +413,7 @@ class Bspline :
             return self._kv
         else :
             return self._kv[index]
+    
     ###
     def control_points (self, which="all") : 
         il = self.index_list(which)
@@ -418,6 +423,7 @@ class Bspline :
             index = df.index[i]
             df.iloc[i] = self._cp[index]
         return df
+    
     ### da rivedere
     def clear_cp (self) : 
         cp = np.zeros(self._cp.shape,dtype=object)#,np.zeros(bs.codim()))
@@ -432,6 +438,7 @@ class Bspline :
         self._ready_sol_BEM = False
         self._ready_lv_BEM = False
         self._ready_ind_sol_BEM = False        
+    
     ###
     def show(self,what="all"):
         
@@ -464,12 +471,15 @@ class Bspline :
                 print(k.show())
                 i=i+1
             print("\n--------------------")        
+    
     ###
     def dim(self)  : 
         return self._sh.dim()
+    
     ###
     def codim(self): 
         return self._sh.codim()            
+    
     ###
     def _find_k(self,x,t) :
         #print("x:",x)
@@ -482,6 +492,7 @@ class Bspline :
         #if x >= t[-1] : #ultimo elemento
         #    output = -2
         return output
+    
     ###
     def _deBoor(self,x):
         
@@ -511,6 +522,7 @@ class Bspline :
         #valuto la funzione
         #if der == False :
         return self._deBoor_private(k,x,t,c,p)
+    
     ### 
     def _deBoor_private(self,k: int, x, t, c, p: int) :
         
@@ -539,6 +551,7 @@ class Bspline :
                     d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
 
         return d[p]#.reshape(len(d[p],))
+    
     ###
     def _iterative_deBoor(self,x) :
         
@@ -579,6 +592,7 @@ class Bspline :
         #print("surface_cp : ",surface_cp)            
         out_sh = shape(dim=1,codim=self.codim())        
         return Bspline(out_sh,[sub_kv],surface_cp,properties=self.properties)    
+    
     ###
     def evaluate(self,x):
         
@@ -609,9 +623,11 @@ class Bspline :
                 out = out.astype(self.properties["dtype"]).reshape((len(out,)))
                 #out = out.reshape((len(out,)))
             return out
+    
     ###
     def __call__(self,x):
         return self.evaluate(x)    
+    
     ### da rivedere
     def derivative(self,axis=-1):        
         
@@ -705,6 +721,7 @@ class Bspline :
             return out[0]
         else :
             return out
+    
     ###
     def _transpose(self,left,right):
         if left==right :
@@ -725,12 +742,14 @@ class Bspline :
         
         #
         return Bspline(new_sh,new_kv,new_cp)
+    
     ### 
     def _correct_type_and_shape(self,x):
         X = np.asarray(x)
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
     #Galerkin method
+    
     ###
     def index_list(self,which="all"):
         N = list()
@@ -870,7 +889,6 @@ class Bspline :
                 
         return am
     
-   
     ### da rivedere
     def basis_max_min(self,r,br=None):
         
@@ -1026,8 +1044,7 @@ class Bspline :
         self._overlap_matrix = smd1D.copy()
         self._ready_om = True
         return smd1D
-            #smd.append(smd1D)
-        
+            #smd.append(smd1D)    
     ###
     def prepare_opts(self,opts,opts2=None):
         
