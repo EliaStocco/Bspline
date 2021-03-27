@@ -2981,7 +2981,7 @@ def BEM_disconnected(bs,uinc=None,k=None,XY=None,opts=None):
         slp = b.single_layer_potential_BEM(sol=ind_sol2,XY=XY,k=k,opts=opts)
         SLP[names[i]] = slp["value"]
 
-    SLP["value"] = SLP.mean(axis=1)
+    SLP["value"] = SLP.sum(axis=1)
     SLP["x"] = SLP.index
     SLP  = SLP [ ["x","value"] + names ]
     
