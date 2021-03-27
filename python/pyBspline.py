@@ -1004,8 +1004,9 @@ class Bspline :
                 X = np.full(self.dim(),0.0,dtype=object)
                 for k in range(0,self.dim()):
                     # opts["N"][k] = numero di punti interni
-                    punti = np.linspace(ov[k][0],ov[k][1],opts["N"][k]+1,endpoint=False)
-                    X[k] = np.delete(punti,0)
+                    #punti = np.linspace(ov[k][0],ov[k][1],opts["N"][k]+1,endpoint=False)
+                    #X[k] = np.delete(punti,0)
+                    X[k] = np.linspace(ov[k][0],ov[k][1],opts["N"][k],endpoint=True)
 
                 area = 1
                 for k in range(0,self.dim()):
@@ -1965,7 +1966,7 @@ class Bspline :
 
                 #
                 if opts["print"] :
-                    print(conta,"/",tot,":",r,"-",c,end="\r")
+                    print(conta,"/",tot,":",r,"-",c,end="\r",flush=True)
 
                 #
                 areaY = area[c]
@@ -2743,8 +2744,9 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
             src = opts["copy-source"][k]
             if src in calculated:
                 l,r = opts["copy-source"][opts["copy-source"].index(src)]
-                SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
-                SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
+                SM = copy_block(SM,l,r,i,j)
+                #SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
+                #SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
                 continue
                 
         #else :
@@ -2770,8 +2772,10 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
                 src = opts["copy-source"][k]
                 if src in calculated:
                     l,r = opts["copy-source"][opts["copy-source"].index(src)]
-                    SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
-                    SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
+                    SM = copy_block(SM,l,r,i,j)
+                    SM = copy_block(SM,r,l,j,i)
+                    #SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
+                    #SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
                     continue
             
             bsLeft  = bs[i]
@@ -2787,6 +2791,22 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
     if opts["copy_sm_BEM_disc"] == True :
         _sm_BEM_disc = SM
         _ready_sm_BEM_disc = True
+    return SM
+    
+###
+def get_block(SM,i,j,drop=False):
+    nl = np.sum(SM.index.get_level_values(0) == i)-1
+    nr = np.sum(SM.columns.get_level_values(0) == j)-1
+    if drop == False:
+        return SM.loc[(i,(0,)):(i,(nl,)),(j,(0,)):(j,(nr,))]
+    else :
+        a = SM.loc[(i,(0,)):(i,(nl,)),(j,(0,)):(j,(nr,))]
+        return a.droplevel(0,axis=0).droplevel(0,axis=1)
+def copy_block(SM,i_src,j_src,i_dest,j_dest):
+    nl = np.sum(SM.index.get_level_values(0) == i_src)-1
+    nr = np.sum(SM.columns.get_level_values(0) == j_src)-1
+    SM.loc[(i_dest,(0,)):(i_dest,(nl,)),(j_dest,(0,)):(j_dest,(nr,))] = \
+    np.asarray(SM.loc[(i_src,(0,)):(i_src,(nl,)),(j_src,(0,)):(j_src,(nr,))])
     return SM
    
 ###   
