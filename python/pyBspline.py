@@ -256,7 +256,7 @@ class Bspline :
         self._overlap_matrix = None        
         #
         self._stiffness_matrix_BEM = None
-        self._slp_matrix_BEM = None
+        self._slp_BEM = None
         self._sol_BEM = None
         self._ind_sol_BEM = None
         self._lv_BEM = None        
@@ -403,6 +403,18 @@ class Bspline :
             cp = self.get_cp(i)
             self.set_cp(i,cp+trasl)
         return
+        
+    ###
+    def traslate_slpB(self,trasl):
+        if self._slp_BEM is not None :
+            slpB = self._slp_BEM
+            newindex = np.asarray([ np.asarray(slpB.index[i]) for i in range(len(slpB))]) + trasl
+            a =[ tuple(i) for i in newindex ]
+            self._slp_BEM.index = a
+        else :
+            print("slpB is None")
+        return 
+        
     
     ### some function returing some variables, not very usefull...
     def knots_vectors(self): 
@@ -2237,7 +2249,7 @@ class Bspline :
         opts = self.prepare_opts(opts)
         
         #if opts["ready_slp_BEM"] == True and self._ready_slp_BEM == True :
-        #    return self._slp_matrix_BEM  
+        #    return self._slp_BEM  
         
         if opts["print"] :
             print("single_layer_potential_basis_BEM")
@@ -2247,7 +2259,7 @@ class Bspline :
         
         if opts["ready_slp_BEM"] == True :
             if self._ready_slp_BEM == True :
-                slp = self._slp_matrix_BEM    
+                slp = self._slp_BEM    
                 allnewxy = [ tuple(i) for i in XY]
                 newindex = [ i not in slp.index for i in allnewxy ]
                 newXY = XY[newindex]
@@ -2298,17 +2310,17 @@ class Bspline :
             if opts["print"] :
                 print("Updating slp matrix")
                 
-            if self._slp_matrix_BEM is None :
-                self._slp_matrix_BEM = out0.copy()        
+            if self._slp_BEM is None :
+                self._slp_BEM = out0.copy()        
             else :
-                slp = self._slp_matrix_BEM    
+                slp = self._slp_BEM    
                 i1 = np.asarray(slp.index)
                 i2 = np.asarray(out0.index)
                 #index = np.unique(np.append(i1,i2))                
                 index1 = [ tuple(i) not in tuple(i2) for i in i1 ]
 
                 result = pd.concat([slp[index1],out0],verify_integrity=True)
-                self._slp_matrix_BEM = result.copy()
+                self._slp_BEM = result.copy()
                 
                 outindex = [ tuple(i) for i in XY]
                 columns = out0.columns
@@ -2446,7 +2458,7 @@ class Bspline :
         elif variable == "sm-BEM" :
             var = self._stiffness_matrix_BEM
         elif variable == "slp-BEM" :
-            var = self._slp_matrix_BEM
+            var = self._slp_BEM
         elif variable == "lv-BEM" :
             var = self._lv_BEM
         elif variable == "ind_sol-BEM" :
@@ -2492,7 +2504,7 @@ class Bspline :
             var = var.drop('index',axis=1)
             var.columns = [tuple_from_str(i) for i in var.columns]
             var = var.applymap(np.complex)
-            self._slp_matrix_BEM = var.copy()
+            self._slp_BEM = var.copy()
             self._ready_slp_BEM = True   
         
         elif variable == "sol-BEM":
@@ -2516,12 +2528,14 @@ class Bspline :
             self._ready_lv_BEM = True     
                      
         elif variable == "cp" :
-            var.columns = [ int(i) for i in var.columns ]
-            index = var.index
-            for i in index:
-                for k in range(self.codim()):
-                    self._cp[i,k] = var.at[i,k]
-            #self._cp = var.copy()
+            var.columns = [ int(i) for i in var.columns]
+            n = self.codim()
+            cp = np.zeros((n,),dtype=float)
+            #print("index:",var.index,flush=True)
+            #print("col:",var.columns)
+            for i in var.index:
+                cp = np.asarray(var.loc[i:i,0:n]).reshape((n,))
+                self.set_cp(i,cp)
         
         return var
    
@@ -2802,6 +2816,8 @@ def get_block(SM,i,j,drop=False):
     else :
         a = SM.loc[(i,(0,)):(i,(nl,)),(j,(0,)):(j,(nr,))]
         return a.droplevel(0,axis=0).droplevel(0,axis=1)
+
+###
 def copy_block(SM,i_src,j_src,i_dest,j_dest):
     nl = np.sum(SM.index.get_level_values(0) == i_src)-1
     nr = np.sum(SM.columns.get_level_values(0) == j_src)-1
