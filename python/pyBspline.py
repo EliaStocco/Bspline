@@ -52,10 +52,11 @@ class knot_vector:
                  p=0,
                  n=0,
                  cls=np.zeros(shape=(0,1)),
-                 check_open=True):
+                 properties=""):
         self._vect       = np.asarray(cls)
         self._pol_order  = p
         self._basis_card = n
+        self._properties = properties
         
         if p+n+1 != len(cls) :
             print ("knot_vector")
@@ -68,10 +69,10 @@ class knot_vector:
         # checking knot vector is sorted
         if not np.all(np.diff(self._vect) >= 0) :
             raise Exception("knot vector not sorted")
-            
-        if check_open == True and self.is_open() == False :
-            print ("knot_vector error : it is not an OPEN knot vector")
-            raise Exception()
+                        
+        #if check_open == True and self.is_open() == False :
+        #    print ("knot_vector error : it is not an OPEN knot vector")
+        #    raise Exception()
     
     ###
     def p     (self): return self._pol_order
@@ -97,7 +98,11 @@ class knot_vector:
         p = self.p()
         n = self.n()
         t = self.knots()
-        return t[n-1]#max(self._vect)
+        if self._properties == "periodic":
+            return t[n-1]#max(self._vect)
+        elif self._properties == "open":
+            return t[n+p]
+        
                        
     ###
     def __len__(self): return len(self.knots())
@@ -109,13 +114,13 @@ class knot_vector:
     
 def uniform_open_kv(xmin,xmax,p,n):
     v = np.concatenate((np.linspace(xmin,xmin,p),np.linspace(xmin,xmax,n-p+1),np.linspace(xmax,xmax,p)))
-    return knot_vector(p,n,v)          
+    return knot_vector(p,n,v,properties="open")          
 
 def periodic_kv(xmin,xmax,p,n):
     #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
     v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
     v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
-    return knot_vector(p,n+1+p,v,check_open=False) 
+    return knot_vector(p,n+1+p,v,properties="periodic") 
 
 # ## Bspline class
 
@@ -147,7 +152,7 @@ class Bspline :
                 ):
         
         #proprietà
-        prop = {"periodic":False,"dtype":float}
+        prop = {"periodic":np.full(sh.dim(),False,dtype=bool), "dtype":float}
         if properties is None :
             properties = prop
         for p in prop:
@@ -158,13 +163,13 @@ class Bspline :
         del properties
         
         
-        if self.properties["periodic"] is None :
-            self.properties["periodic"] = np.full(sh.dim(),False,dtype=bool)
+        #if self.properties["periodic"] is None :
+        #    self.properties["periodic"] = np.full(sh.dim(),False,dtype=bool)
         #if self.dim() == 1:
         #    self.properties["periodic"][0] = properties["periodic"]
-        elif len(self.properties["periodic"]) != sh.dim():
-            print("Error : periodic array of wrong lenght")
-            raise Exception()  
+        #elif len(self.properties["periodic"]) != sh.dim():
+        #    print("Error : periodic array of wrong lenght")
+        #    raise Exception()  
         #else :
         #    self.properties["periodic"] = properties["periodic"]
      
@@ -281,6 +286,7 @@ class Bspline :
     ###
     def copy(self):
         return copy.copy(self)    
+    
     ### some function imitating C++ (template) type initialization
     def Type_out(self): #ok
         #if self.codim() == 1 :
@@ -314,6 +320,10 @@ class Bspline :
         index = [ ii for ii in index]
         cp = pd.DataFrame(index = index,columns=["periodic"])
         cp["periodic"] = None
+        
+        if self.is_periodic() == False:
+            return cp
+            
         for i in index:
             j = self.get_periodic_index(i)
             if j != i :
@@ -357,6 +367,8 @@ class Bspline :
         il = self.index_list()
         it = [tuple(i) for i in il ]
         dof = self.periodicity()
+        if self.is_periodic() == False:
+            return dof
         per = dof.copy()
         for i in it :
             j = per.at[i,"periodic"]
@@ -366,7 +378,7 @@ class Bspline :
         return dof
     
     ### set control point value/coordinates
-    def set_cp (self,index,value,check=True) :
+    def set_cp (self,index,value,check=True,opts=None) :
         
         #if self.codim() > 1 :
         #    value = np.asarray(value).reshape((self.codim(),1))
@@ -383,15 +395,19 @@ class Bspline :
             if self.is_periodic():
                 tip = self.get_periodic_index(index)
                 self._cp[tip] = value
-                
-        self._ready_sm = False
-        self._ready_om = False
-        self._ready_sm_BEM = False
-        self._ready_slp_BEM = False
-        self._ready_sol_BEM = False
-        self._ready_lv_BEM = False
-        self._ready_ind_sol_BEM = False        
         
+        if opts is None:
+            opts = {}
+            opts["reset-ready"] = True
+            
+        if opts["reset-ready"] == True :
+            self._ready_sm = False
+            self._ready_om = False
+            self._ready_sm_BEM = False
+            self._ready_slp_BEM = False
+            self._ready_sol_BEM = False
+            self._ready_lv_BEM = False
+            self._ready_ind_sol_BEM = False                
         #self_ready_lv = False
         return True                                     
     
@@ -401,7 +417,7 @@ class Bspline :
         dof = self.dof()
         for i in dof.index:
             cp = self.get_cp(i)
-            self.set_cp(i,cp+trasl)
+            self.set_cp(i,cp+trasl,opts={"reset-ready":False})
         return
         
     ###
@@ -594,7 +610,8 @@ class Bspline :
             #print("curve._cp.shape:",curve._cp.shape)
             #print("self.get_cp(i).shape:",self.get_cp(i).shape)
             #print("\n")
-            curve._cp = self.get_cp(i)      
+            curve._cp = self._cp[i]
+            #curve._cp = self.get_cp(i)      
             a = curve.evaluate(x_surf)
             #print("a:",a)
             #print("a.shape",a.shape)
@@ -616,8 +633,8 @@ class Bspline :
             else :  
                 curve_final = self._iterative_deBoor(x)
                 out = curve_final._deBoor(x[0])
-            if self.codim() == 1 :
-                out = out[0]
+            #if self.codim() == 1 :
+            #    out = out[0]
             return out
         else :
             #print("x vector of lenght ",len(X)," passed")
@@ -665,9 +682,9 @@ class Bspline :
                 kt     = kv.knots()
 
                 if k != K :
-                    der_kv.append(knot_vector(kv.p(),kv.n(),kt,check_open=False)) 
+                    der_kv.append(knot_vector(kv.p(),kv.n(),kt)) 
                 else :     
-                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1],check_open=False))         
+                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
             #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
             derK = Bspline(der_sh,der_kv,properties=self.properties)
 
@@ -1074,6 +1091,8 @@ class Bspline :
             opts["N2"] = np.power(opts["N"],2)
         if "ready_trace" not in opts :
             opts["ready_trace"] = [ False for i in range(self.dim())]
+        if "prec" not in opts :
+            opts["prec"] = 1e-6
         
             
         #
@@ -1087,6 +1106,8 @@ class Bspline :
         for v in varFalse :            
             if v not in opts :
                 opts[v] = False
+        
+        
         
         return opts
     
@@ -1201,154 +1222,164 @@ class Bspline :
         else :                
 
            
-            is_periodic = self.is_periodic()
+                is_periodic = self.is_periodic()
 
-            #degrees of freedem: internal
+                #degrees of freedem: internal
 
-            if is_periodic == True :
-
-                #
-                #il = self.index_list()
-                #it = [tuple(i) for i in il]
-                #dof = self.dof()
-                #delindex = [ i for i in it if i not in dof.index ]
-                #dof_int = om.copy()
-                #dof_int.drop( delindex ,inplace = True,axis=0)
-                #dof_int.drop( delindex ,inplace = True,axis=1)
-                
-                dof_int = make_matrix_periodic(self,self,om)
-
-
-            else :
-                
-                if opts["interpolation"] == True :
-                #indici dei dof interni e di bordo
-                    index_int  = edge.index[ edge["corner"] == False ]
-                    index_edge = edge.index[ edge["corner"] == True  ]
-                else :
-                    index_int  = edge.index#[ edge["corner"] == False ]
-                    index_edge = []#edge.index[ edge["corner"] == True  ]
-
-
-                 #
-                dof_int = om.copy()
-                dof_int.drop( index_edge ,inplace = True,axis=0)
-                dof_int.drop( index_edge ,inplace = True,axis=1)
-
-                #
-                dof_edge = om.copy()
-                dof_edge.drop( index_edge ,inplace = True,axis=0)
-                dof_edge.drop( index_int  ,inplace = True,axis=1)
-
-                denp = np.asarray(dof_edge)
-
-
-            #degrees of freedem: edge            
-
-            #convert into numpy array
-            dinp = np.asarray(dof_int)
-            #denp = np.asarray(dof_edge)
-
-            #load vector: dof interni
-            #print("load vector")
-            lv0 = self.load_vector(func,opts)
-            #lv.at[(11,),"cp"] = 0.
-            if is_periodic == True :
-                lv = self.make_vector_periodic(lv0)
-                
-            else :
-                
-                lv0.drop( index_edge  ,inplace = True) 
-
-                XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
-                for k in range(self.dim()):
-                    kv = self.knots_vectors()[k]
-                    nmax = kv.n()-1
-                    xmin = min(kv.knots())
-                    xmax = max(kv.knots())
-                    for i in index_edge:
-                        if i[k] == nmax :
-                            XY.at[i,k] = xmax
-                        else :
-                            XY.at[i,k] = xmin
-
-                xy = np.asarray(XY).astype(float)
-                #if self.dim() == 1 :
-                #    xy = xy.reshape((len(xy),))
-
-                #dof di bordo
-                #print("gDnp")
-                gDnp = func(xy)#.astype(float)
-
-                if self.codim() == 1 :
-                    a = gDnp.copy()
-                    gDnp = np.zeros(shape=(len(a),self.codim()))
-                    gDnp[:,0] = a
-                    del a
-                gDnpND = gDnp
-
-            #raise()
-
-            ###        
-            #print("ciao")
-            lvnpND = np.asarray(lv["cp"])#.astype(float)
-            lvnpND = np.zeros(shape=(len(lv),self.codim()))
-            for i in range(len(lv)):
-                lvnpND[i,:] = lv["cp"][i]   
-
-            #raise()
-
-
-            #prodotto righe per colonne
-            #edlv = np.dot(denp,gDnp)
-            #edlvND = edlv
-
-            # -> da rivedere
-            # qui devo introdurre del codice per gestire 
-            # il fatto che la Bspline può essere periodica
-
-
-            out = pd.DataFrame(index=lv.index,columns=np.arange(0,self.codim()))
-            #index = self.index_list()
-            #it = [ tuple(j) for j in index ]
-            for k in range(self.codim()):
-
-                lvnp = lvnpND[:,k]
-
-                if is_periodic == False :
-
-                    gDnp = gDnpND[:,k]
-                    gDnp = gDnp.reshape((len(gDnp),))
-                    edlv = np.dot(denp,gDnp)
-                    #edlv = edlvND[:,k]
+                if is_periodic == True :
 
                     #
-                    #edlv = edlv.reshape((len(edlv),))
+                    #il = self.index_list()
+                    #it = [tuple(i) for i in il]
+                    #dof = self.dof()
+                    #delindex = [ i for i in it if i not in dof.index ]
+                    #dof_int = om.copy()
+                    #dof_int.drop( delindex ,inplace = True,axis=0)
+                    #dof_int.drop( delindex ,inplace = True,axis=1)
+
+                    dof_int = make_matrix_periodic(self,self,om)
+
+
+                else :
+
+                    if opts["interpolation"] == True :
+                    #indici dei dof interni e di bordo
+                        index_int  = edge.index[ edge["corner"] == False ]
+                        index_edge = edge.index[ edge["corner"] == True  ]
+                    else :
+                        index_int  = edge.index#[ edge["corner"] == False ]
+                        index_edge = []#edge.index[ edge["corner"] == True  ]
+
+
+                     #
+                    dof_int = om.copy()
+                    dof_int.drop( index_edge ,inplace = True,axis=0)
+                    dof_int.drop( index_edge ,inplace = True,axis=1)
 
                     #
-                    cpint = scipy.linalg.solve(dinp,lvnp-edlv,assume_a="sym") 
+                    dof_edge = om.copy()
+                    dof_edge.drop( index_edge ,inplace = True,axis=0)
+                    dof_edge.drop( index_int  ,inplace = True,axis=1)
+
+                    denp = np.asarray(dof_edge)
+
+
+                #degrees of freedem: edge            
+
+                #convert into numpy array
+                dinp = np.asarray(dof_int)
+                #denp = np.asarray(dof_edge)
+
+                #load vector: dof interni
+                #print("load vector")
+                lv0 = self.load_vector(func,opts)
+                #raise()
+                #lv.at[(11,),"cp"] = 0.
+                if is_periodic == True :
+                    lv = self.make_vector_periodic(lv0)
+
                 else :
-                    cpint = scipy.linalg.solve(dinp,lvnp,assume_a="sym") 
 
-                #cp = pd.DataFrame(index=it,columns=["cp"])
+                    lv = lv0.drop( index_edge ) 
+                    
+                    XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+                    for k in range(self.dim()):
+                        kv = self.knots_vectors()[k]
+                        #nmax = kv.n()-1
+                        xmin = kv.xmin()#min(kv.knots())
+                        xmax = kv.xmax()#max(kv.knots())
+                        for i in index_edge:
+                            if i[k] == 0 :
+                                XY.at[i,k] = xmin
+                            else :
+                                XY.at[i,k] = xmax
 
-                out[k] = cpint
 
-            #assegno ai control points i valori calcolati
-            #valori interni
-            effindex = self.get_effective_index()
-            for i in range(len(effindex)):
-                j = effindex[i]
-                self.set_cp(j,np.asarray(out.iloc[i,:]))
-                #out.iloc[out.index == j] = cpint[i]
+                    xy = np.asarray(XY).astype(float)
+                    #if self.dim() == 1 :
+                    #    xy = xy.reshape((len(xy),))
 
-            #assegno ai control points i valori calcolati
-            #valori di bordo interpolanti
-            if is_periodic == False:
-                for i in range(len(index_edge)):
-                    j = index_edge[i]
-                    self.set_cp(j,gDnpND[i])
-                    #out.iloc[out.index == j] = gDnp[i]
+                    #dof di bordo
+                    #print("gDnp")
+                    gDnp = func(xy)#.astype(float)
+
+                    if self.codim() == 1 :
+                        a = gDnp.copy()
+                        gDnp = np.zeros(shape=(len(a),self.codim()))
+                        gDnp[:,0] = a
+                        del a
+                    gDnpND = gDnp
+                    
+                    #raise()
+
+                #raise()
+
+                ###        
+                #print("ciao")
+                #lvnpND = np.asarray(lv["cp"]).astype(float)
+                #lvnpND = lvnpND.reshape((len(lv),self.codim()))
+                #for i in range(len(lv)):
+                #    lvnpND[i,:] = lv["cp"][i]   
+                
+                lvnpND = np.asarray([ np.asarray(i) for i in lv["cp"] ] )#.astype(float)
+                lvnpND = lvnpND.reshape((len(lv),self.codim()))
+
+                #raise()
+
+
+                #prodotto righe per colonne
+                #edlv = np.dot(denp,gDnp)
+                #edlvND = edlv
+
+                # -> da rivedere
+                # qui devo introdurre del codice per gestire 
+                # il fatto che la Bspline può essere periodica
+
+
+                out = pd.DataFrame(index=lv.index,columns=np.arange(0,self.codim()))
+                #index = self.index_list()
+                #it = [ tuple(j) for j in index ]
+                for k in range(self.codim()):
+
+                    lvnp = lvnpND[:,k]
+
+                    if is_periodic == False :
+
+                        gDnp = gDnpND[:,k]
+                        gDnp = gDnp.reshape((len(gDnp),))
+                        edlv = np.dot(denp,gDnp)
+                        #edlv = edlvND[:,k]
+
+                        #
+                        #edlv = edlv.reshape((len(edlv),))
+
+                        #
+                        cpint = scipy.linalg.solve(dinp,lvnp-edlv,assume_a="sym") 
+                    else :
+                        cpint = scipy.linalg.solve(dinp,lvnp,assume_a="sym") 
+
+                    #cp = pd.DataFrame(index=it,columns=["cp"])
+
+                    out[k] = cpint
+
+                #assegno ai control points i valori calcolati
+                #valori interni
+                if is_periodic == True :
+                    effindex = self.get_effective_index()
+                else :
+                    effindex = index_int
+                for i in range(len(effindex)):
+                    j = effindex[i]
+                    self.set_cp(j,np.asarray(out.iloc[i,:]))
+                    #out.iloc[out.index == j] = cpint[i]
+
+                #assegno ai control points i valori calcolati
+                #valori di bordo interpolanti
+                if is_periodic == False:
+                    for i in range(len(index_edge)):
+                        j = index_edge[i]
+                        self.set_cp(j,gDnpND[i,:])
+                        #out.iloc[out.index == j] = gDnp[i]
 
         return self.control_points()
     
@@ -1387,7 +1418,7 @@ class Bspline :
         new_sh = shape(dim=self.dim()-1,codim=self.codim())        
         kv     = [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != n ]  
         prop    = self.properties.copy()#.drop(n)
-        prop["periodic"] = prop["periodic"].drop(n)
+        prop["periodic"] = np.delete(prop["periodic"],n)
         curve  = Bspline(new_sh,kv,properties=prop)
         
         self._ready_trace[n] = True
@@ -2260,12 +2291,24 @@ class Bspline :
         if opts["ready_slp_BEM"] == True :
             if self._ready_slp_BEM == True :
                 slp = self._slp_BEM    
-                allnewxy = [ tuple(i) for i in XY]
-                newindex = [ i not in slp.index for i in allnewxy ]
+                #allnewxy = [ tuple(i) for i in XY]
+                #newindex = [ i not in slp.index for i in allnewxy ]
+                oldindex = np.asarray([np.asarray(i) for i in slp.index] )
+                newindex = np.full(len(XY),True)
+                n = len(XY)
+                for i in range(n):
+                    if opts["print"] == True : print(i,"/",n,end="\r") 
+                    xy = XY[i]
+                    dist = np.sqrt(np.sum(np.power(xy-oldindex,2.0),axis=1)).min()
+                    if dist < opts["prec"]:
+                        newindex[i] = False
+                        continue
                 newXY = XY[newindex]
                 if len(newXY) == 0 : #li ho già calcolati tutti
                     #print("ciao")
                     return slp   
+                else :
+                    print("\nNot all desired points has already been calculated:",len(newXY))
              
         lenXY = len(newXY)
         if opts["print"] :
@@ -2774,7 +2817,7 @@ def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
         
     # elementi fuori diagonale
     conta = 1
-    nn = int(n*(n+1)/2)
+    nn = int(n*(n+1)/2-n)
     for i in range(n):
         for j in range(i+1,n):
             if opts["print"] == True:
