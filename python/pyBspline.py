@@ -2359,15 +2359,14 @@ class Bspline :
                 slp = self._slp_BEM    
                 i1 = np.asarray(slp.index)
                 i2 = np.asarray(out0.index)
-                #index = np.unique(np.append(i1,i2))                
                 index1 = [ tuple(i) not in tuple(i2) for i in i1 ]
-
                 result = pd.concat([slp[index1],out0],verify_integrity=True)
-                self._slp_BEM = result.copy()
-                
+                result["index"] = result.index
                 outindex = [ tuple(i) for i in XY]
-                columns = out0.columns
-                out = result.loc[outindex,columns]
+                out = result.loc[ [ i in outindex for i in result["index"] ]  ]
+                self._slp_BEM = result.copy()
+                del self._slp_BEM["index"]
+                del out["index"]
 
             self._ready_slp_BEM = True
         return out
@@ -2390,8 +2389,22 @@ class Bspline :
             slpB0 = slpB.copy()
             
         #
-        index = [ tuple(i) for i in XY]
-        slpB = slpB0.loc[index,slpB0.columns]
+        #index = [ tuple(i) for i in XY]
+        #slpB0["index"] = slpB0.index
+        #slpB = slpB0.loc[ [ i in index for i in slpB0["index"] ]  ]
+        #del slpB["index"]
+        oldindex = np.asarray([np.asarray(i) for i in slpB0.index] )
+        newindex = np.full(len(slpB0),False)
+        n = len(XY)
+        for i in range(n):
+            if opts["print"] == True : print(i,"/",n,end="\r") 
+            xy = XY[i]
+            dist = np.sqrt(np.sum(np.power(xy-oldindex,2.0),axis=1)).min()
+            if dist < opts["prec"]:
+                newindex[i] = True
+                continue
+        slpB = slpB0[newindex]
+        #slpB = slpB0.loc[index,slpB0.columns]
   
         #        
         slpBnp = np.asarray(slpB)        
@@ -2402,7 +2415,7 @@ class Bspline :
 
         #
         out = pd.DataFrame(index=slpB.index,columns=["x","value"])
-        out["x"] = index#[ tuple(i) for i in XY]
+        out["x"] = [ tuple(i) for i in XY]
         out["value"] = outnp
         
         if opts["copy_sol_BEM"] == True :
@@ -3038,7 +3051,7 @@ def BEM_disconnected(bs,uinc=None,k=None,XY=None,opts=None):
         b = bs[i]
         ind_sol2 = ind_sol[(i,first[i]):(i,last[i])]
         slp = b.single_layer_potential_BEM(sol=ind_sol2,XY=XY,k=k,opts=opts)
-        SLP[names[i]] = slp["value"]
+        SLP[names[i]] = np.asarray(slp["value"],dtype=np.complex)
 
     SLP["value"] = SLP.sum(axis=1)
     SLP["x"] = SLP.index
