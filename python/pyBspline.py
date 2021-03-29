@@ -2394,16 +2394,20 @@ class Bspline :
         #slpB = slpB0.loc[ [ i in index for i in slpB0["index"] ]  ]
         #del slpB["index"]
         oldindex = np.asarray([np.asarray(i) for i in slpB0.index] )
-        newindex = np.full(len(slpB0),False)
+        newindex = np.full(len(slpB0),-1)
         n = len(XY)
         for i in range(n):
             if opts["print"] == True : print(i,"/",n,end="\r") 
             xy = XY[i]
-            dist = np.sqrt(np.sum(np.power(xy-oldindex,2.0),axis=1)).min()
+            vett = np.sqrt(np.sum(np.power(xy-oldindex,2.0),axis=1))
+            dist = vett.min()
+            indice = np.argmin(vett)
             if dist < opts["prec"]:
-                newindex[i] = True
+                newindex[i] = indice
                 continue
-        slpB = slpB0[newindex]
+        #raise()
+        newindex = newindex[newindex != -1]
+        slpB = slpB0.iloc[newindex]
         #slpB = slpB0.loc[index,slpB0.columns]
   
         #        
