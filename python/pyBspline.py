@@ -111,6 +111,8 @@ class knot_vector:
         print("polinomial degree : " , self.p())
         print("base caridnality  : " , self.n())
         print("knots             : " , self.knots())
+        print("xmin              : " , self.xmin())
+        print("xmax              : " , self.xmax())
     
 def uniform_open_kv(xmin,xmax,p,n):
     v = np.concatenate((np.linspace(xmin,xmin,p),np.linspace(xmin,xmax,n-p+1),np.linspace(xmax,xmax,p)))
