@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[19]:
 
 
-#get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
+get_ipython().system('jupyter nbconvert --to script pyBspline.ipynb')
 
 
 # ## Shape class
 
-# In[1]:
+# In[ ]:
 
 
 class shape :
@@ -52,11 +52,10 @@ class knot_vector:
                  p=0,
                  n=0,
                  cls=np.zeros(shape=(0,1)),
-                 properties=""):
+                 check_open=True):
         self._vect       = np.asarray(cls)
         self._pol_order  = p
         self._basis_card = n
-        self._properties = properties
         
         if p+n+1 != len(cls) :
             print ("knot_vector")
@@ -69,10 +68,10 @@ class knot_vector:
         # checking knot vector is sorted
         if not np.all(np.diff(self._vect) >= 0) :
             raise Exception("knot vector not sorted")
-                        
-        #if check_open == True and self.is_open() == False :
-        #    print ("knot_vector error : it is not an OPEN knot vector")
-        #    raise Exception()
+            
+        if check_open == True and self.is_open() == False :
+            print ("knot_vector error : it is not an OPEN knot vector")
+            raise Exception()
     
     ###
     def p     (self): return self._pol_order
@@ -98,11 +97,7 @@ class knot_vector:
         p = self.p()
         n = self.n()
         t = self.knots()
-        if self._properties == "periodic":
-            return t[n-1]#max(self._vect)
-        elif self._properties == "open":
-            return t[n+p]
-        
+        return t[n-1]#max(self._vect)
                        
     ###
     def __len__(self): return len(self.knots())
@@ -111,18 +106,33 @@ class knot_vector:
         print("polinomial degree : " , self.p())
         print("base caridnality  : " , self.n())
         print("knots             : " , self.knots())
-        print("xmin              : " , self.xmin())
-        print("xmax              : " , self.xmax())
     
 def uniform_open_kv(xmin,xmax,p,n):
     v = np.concatenate((np.linspace(xmin,xmin,p),np.linspace(xmin,xmax,n-p+1),np.linspace(xmax,xmax,p)))
-    return knot_vector(p,n,v,properties="open")          
+    return knot_vector(p,n,v)          
 
 def periodic_kv(xmin,xmax,p,n):
     #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
     v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
     v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
-    return knot_vector(p,n+1+p,v,properties="periodic") 
+    return knot_vector(p,n+1+p,v,check_open=False) 
+
+    # if xmin = 0. and xmax = 1.
+    # kv.knots()[P]   = 0.
+    # kv.knots()[N+P] = 1.
+    # bs.evaluate(0.) == bs.evaluate(1.)
+
+
+    #v0 = np.linspace(0.,1.0,n+2*p+2,endpoint=True)
+    #v = xmin + (v0 - v0[p])/v0[n+1]*(xmax-xmin)
+    #return knot_vector(p,n+p+1,v,check_open=False) 
+    #v0 = np.linspace(0.,1.0,n+p+p,endpoint=True)
+    #v = xmin + (v0 - v0[p])/v0[n]*(xmax-xmin)
+    #return knot_vector(p,n+p+1,v,check_open=False)  
+    #v0 = np.linspace(0.,1.0,n+1+p,endpoint=True)
+    #v = xmin + (v0 - v0[p])/v0[n-p]*(xmax-xmin)
+    #return knot_vector(p,n,v,check_open=False)  
+
 
 # ## Bspline class
 
@@ -154,7 +164,7 @@ class Bspline :
                 ):
         
         #proprietà
-        prop = {"periodic":np.full(sh.dim(),False,dtype=bool), "dtype":float}
+        prop = {"periodic":False,"dtype":float}
         if properties is None :
             properties = prop
         for p in prop:
@@ -165,13 +175,13 @@ class Bspline :
         del properties
         
         
-        #if self.properties["periodic"] is None :
-        #    self.properties["periodic"] = np.full(sh.dim(),False,dtype=bool)
+        if self.properties["periodic"] is None :
+            self.properties["periodic"] = np.full(sh.dim(),False,dtype=bool)
         #if self.dim() == 1:
         #    self.properties["periodic"][0] = properties["periodic"]
-        #elif len(self.properties["periodic"]) != sh.dim():
-        #    print("Error : periodic array of wrong lenght")
-        #    raise Exception()  
+        elif len(self.properties["periodic"]) != sh.dim():
+            print("Error : periodic array of wrong lenght")
+            raise Exception()  
         #else :
         #    self.properties["periodic"] = properties["periodic"]
      
@@ -201,7 +211,6 @@ class Bspline :
             else :
                 print ("Control points error : wrong dimensions")
                 raise Exception()        
-    
     ### function called by __init__
     def init_knot(self,sh,knots):
         
@@ -263,7 +272,7 @@ class Bspline :
         self._overlap_matrix = None        
         #
         self._stiffness_matrix_BEM = None
-        self._slp_BEM = None
+        self._slp_matrix_BEM = None
         self._sol_BEM = None
         self._ind_sol_BEM = None
         self._lv_BEM = None        
@@ -284,11 +293,9 @@ class Bspline :
         self._ready_trace = [ False for i in range(self.dim())]
         #print("self._cp : ",self._cp)
         return self    
-    
     ###
     def copy(self):
         return copy.copy(self)    
-    
     ### some function imitating C++ (template) type initialization
     def Type_out(self): #ok
         #if self.codim() == 1 :
@@ -298,10 +305,8 @@ class Bspline :
         return np.zeros(self._sh.codim(),dtype=self.properties["dtype"])
     #def Type_in  (self) : #da rifare
     #    return np.zeros(shape=(self._sh.dim(),1))
-    ###
     def Index_t  (self) : #ok
         return np.zeros(shape=(self._sh.dim(),1),dtype=int)    
-    
     ### get control point value/coordinates
     def get_cp (self,index,check=True) :        
         try :
@@ -322,16 +327,11 @@ class Bspline :
         index = [ ii for ii in index]
         cp = pd.DataFrame(index = index,columns=["periodic"])
         cp["periodic"] = None
-        
-        if self.is_periodic() == False:
-            return cp
-            
         for i in index:
             j = self.get_periodic_index(i)
             if j != i :
                 cp.at[i,"periodic"] = j
         return cp
-    
     ###
     def get_periodic_index(self,index):
         #https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-curve-closed.html
@@ -359,18 +359,14 @@ class Bspline :
                 out[i] = j
         #if self.dim() != 1 :
         return tuple(out)
+        #else :
+        #    return out[0]
         
-    ###
-    def copy(self):
-        return copy.deepcopy(self)
-    
     ###
     def dof(self):
         il = self.index_list()
         it = [tuple(i) for i in il ]
         dof = self.periodicity()
-        if self.is_periodic() == False:
-            return dof
         per = dof.copy()
         for i in it :
             j = per.at[i,"periodic"]
@@ -380,7 +376,7 @@ class Bspline :
         return dof
     
     ### set control point value/coordinates
-    def set_cp (self,index,value,check=True,opts=None) :
+    def set_cp (self,index,value,check=True) :
         
         #if self.codim() > 1 :
         #    value = np.asarray(value).reshape((self.codim(),1))
@@ -397,43 +393,17 @@ class Bspline :
             if self.is_periodic():
                 tip = self.get_periodic_index(index)
                 self._cp[tip] = value
+                
+        self._ready_sm = False
+        self._ready_om = False
+        self._ready_sm_BEM = False
+        self._ready_slp_BEM = False
+        self._ready_sol_BEM = False
+        self._ready_lv_BEM = False
+        self._ready_ind_sol_BEM = False        
         
-        if opts is None:
-            opts = {}
-            opts["reset-ready"] = True
-            
-        if opts["reset-ready"] == True :
-            self._ready_sm = False
-            self._ready_om = False
-            self._ready_sm_BEM = False
-            self._ready_slp_BEM = False
-            self._ready_sol_BEM = False
-            self._ready_lv_BEM = False
-            self._ready_ind_sol_BEM = False                
         #self_ready_lv = False
         return True                                     
-    
-    ###
-    def traslate_cp(self,trasl):
-        trasl = np.asarray(trasl)
-        dof = self.dof()
-        for i in dof.index:
-            cp = self.get_cp(i)
-            self.set_cp(i,cp+trasl,opts={"reset-ready":False})
-        return
-        
-    ###
-    def traslate_slpB(self,trasl):
-        if self._slp_BEM is not None :
-            slpB = self._slp_BEM
-            newindex = np.asarray([ np.asarray(slpB.index[i]) for i in range(len(slpB))]) + trasl
-            a =[ tuple(i) for i in newindex ]
-            self._slp_BEM.index = a
-        else :
-            print("slpB is None")
-        return 
-        
-    
     ### some function returing some variables, not very usefull...
     def knots_vectors(self): 
         return self._kv.copy()
@@ -443,7 +413,6 @@ class Bspline :
             return self._kv
         else :
             return self._kv[index]
-    
     ###
     def control_points (self, which="all") : 
         il = self.index_list(which)
@@ -453,7 +422,6 @@ class Bspline :
             index = df.index[i]
             df.iloc[i] = self._cp[index]
         return df
-    
     ### da rivedere
     def clear_cp (self) : 
         cp = np.zeros(self._cp.shape,dtype=object)#,np.zeros(bs.codim()))
@@ -468,7 +436,6 @@ class Bspline :
         self._ready_sol_BEM = False
         self._ready_lv_BEM = False
         self._ready_ind_sol_BEM = False        
-    
     ###
     def show(self,what="all"):
         
@@ -501,15 +468,10 @@ class Bspline :
                 print(k.show())
                 i=i+1
             print("\n--------------------")        
-    
     ###
-    def dim(self)  : 
-        return self._sh.dim()
-    
+    def dim(self)  : return self._sh.dim()
     ###
-    def codim(self): 
-        return self._sh.codim()            
-    
+    def codim(self): return self._sh.codim()            
     ###
     def _find_k(self,x,t) :
         #print("x:",x)
@@ -522,7 +484,6 @@ class Bspline :
         #if x >= t[-1] : #ultimo elemento
         #    output = -2
         return output
-    
     ###
     def _deBoor(self,x):
         
@@ -553,10 +514,8 @@ class Bspline :
         #if der == False :
         return self._deBoor_private(k,x,t,c,p)
     
-    ### 
+    ### https://en.wikipedia.org/wiki/De_Boor%27s_algorithm
     def _deBoor_private(self,k: int, x, t, c, p: int) :
-        
-        #https://en.wikipedia.org/wiki/De_Boor%27s_algorithm
         #Evaluates S(x).
         #
         #Arguments
@@ -581,11 +540,9 @@ class Bspline :
                     d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
 
         return d[p]#.reshape(len(d[p],))
-    
-    ###
+    ### https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/surface/bspline-de-boor.html
     def _iterative_deBoor(self,x) :
         
-        # https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/surface/bspline-de-boor.html
         # coordinate del punto in cui valutare la funzione
         # prendo tutte le coordinate tranne il primo
         x_surf = x[1:]      
@@ -612,8 +569,7 @@ class Bspline :
             #print("curve._cp.shape:",curve._cp.shape)
             #print("self.get_cp(i).shape:",self.get_cp(i).shape)
             #print("\n")
-            curve._cp = self._cp[i]
-            #curve._cp = self.get_cp(i)      
+            curve._cp = self.get_cp(i)      
             a = curve.evaluate(x_surf)
             #print("a:",a)
             #print("a.shape",a.shape)
@@ -623,7 +579,6 @@ class Bspline :
         #print("surface_cp : ",surface_cp)            
         out_sh = shape(dim=1,codim=self.codim())        
         return Bspline(out_sh,[sub_kv],surface_cp,properties=self.properties)    
-    
     ###
     def evaluate(self,x):
         
@@ -635,8 +590,8 @@ class Bspline :
             else :  
                 curve_final = self._iterative_deBoor(x)
                 out = curve_final._deBoor(x[0])
-            #if self.codim() == 1 :
-            #    out = out[0]
+            if self.codim() == 1 :
+                out = out[0]
             return out
         else :
             #print("x vector of lenght ",len(X)," passed")
@@ -654,11 +609,11 @@ class Bspline :
                 out = out.astype(self.properties["dtype"]).reshape((len(out,)))
                 #out = out.reshape((len(out,)))
             return out
-    
+        
     ###
     def __call__(self,x):
-        return self.evaluate(x)    
-    
+        return self.evaluate(x)
+        
     ### da rivedere
     def derivative(self,axis=-1):        
         
@@ -684,9 +639,9 @@ class Bspline :
                 kt     = kv.knots()
 
                 if k != K :
-                    der_kv.append(knot_vector(kv.p(),kv.n(),kt)) 
+                    der_kv.append(knot_vector(kv.p(),kv.n(),kt,check_open=False)) 
                 else :     
-                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]))         
+                    der_kv.append(knot_vector(kv.p()-1,kv.n()-1,kt[1:-1],check_open=False))         
             #der_kv = knot_vector(kv.p()-1,kv.n()-1,kt[1:-1]) # for i in self._kv]                
             derK = Bspline(der_sh,der_kv,properties=self.properties)
 
@@ -752,7 +707,6 @@ class Bspline :
             return out[0]
         else :
             return out
-    
     ###
     def _transpose(self,left,right):
         if left==right :
@@ -773,14 +727,12 @@ class Bspline :
         
         #
         return Bspline(new_sh,new_kv,new_cp)
-    
     ### 
     def _correct_type_and_shape(self,x):
         X = np.asarray(x)
         X = X.reshape((int(X.size/self.dim()),self.dim()))
         return X
     #Galerkin method
-    
     ###
     def index_list(self,which="all"):
         N = list()
@@ -920,6 +872,7 @@ class Bspline :
                 
         return am
     
+   
     ### da rivedere
     def basis_max_min(self,r,br=None):
         
@@ -1035,9 +988,8 @@ class Bspline :
                 X = np.full(self.dim(),0.0,dtype=object)
                 for k in range(0,self.dim()):
                     # opts["N"][k] = numero di punti interni
-                    #punti = np.linspace(ov[k][0],ov[k][1],opts["N"][k]+1,endpoint=False)
-                    #X[k] = np.delete(punti,0)
-                    X[k] = np.linspace(ov[k][0],ov[k][1],opts["N"][k],endpoint=True)
+                    punti = np.linspace(ov[k][0],ov[k][1],opts["N"][k]+1,endpoint=False)
+                    X[k] = np.delete(punti,0)
 
                 area = 1
                 for k in range(0,self.dim()):
@@ -1076,7 +1028,8 @@ class Bspline :
         self._overlap_matrix = smd1D.copy()
         self._ready_om = True
         return smd1D
-            #smd.append(smd1D)    
+            #smd.append(smd1D)
+        
     ###
     def prepare_opts(self,opts,opts2=None):
         
@@ -1093,8 +1046,6 @@ class Bspline :
             opts["N2"] = np.power(opts["N"],2)
         if "ready_trace" not in opts :
             opts["ready_trace"] = [ False for i in range(self.dim())]
-        if "prec" not in opts :
-            opts["prec"] = 1e-6
         
             
         #
@@ -1108,8 +1059,6 @@ class Bspline :
         for v in varFalse :            
             if v not in opts :
                 opts[v] = False
-        
-        
         
         return opts
     
@@ -1224,164 +1173,154 @@ class Bspline :
         else :                
 
            
-                is_periodic = self.is_periodic()
+            is_periodic = self.is_periodic()
 
-                #degrees of freedem: internal
+            #degrees of freedem: internal
 
-                if is_periodic == True :
+            if is_periodic == True :
 
-                    #
-                    #il = self.index_list()
-                    #it = [tuple(i) for i in il]
-                    #dof = self.dof()
-                    #delindex = [ i for i in it if i not in dof.index ]
-                    #dof_int = om.copy()
-                    #dof_int.drop( delindex ,inplace = True,axis=0)
-                    #dof_int.drop( delindex ,inplace = True,axis=1)
-
-                    dof_int = make_matrix_periodic(self,self,om)
-
-
-                else :
-
-                    if opts["interpolation"] == True :
-                    #indici dei dof interni e di bordo
-                        index_int  = edge.index[ edge["corner"] == False ]
-                        index_edge = edge.index[ edge["corner"] == True  ]
-                    else :
-                        index_int  = edge.index#[ edge["corner"] == False ]
-                        index_edge = []#edge.index[ edge["corner"] == True  ]
-
-
-                     #
-                    dof_int = om.copy()
-                    dof_int.drop( index_edge ,inplace = True,axis=0)
-                    dof_int.drop( index_edge ,inplace = True,axis=1)
-
-                    #
-                    dof_edge = om.copy()
-                    dof_edge.drop( index_edge ,inplace = True,axis=0)
-                    dof_edge.drop( index_int  ,inplace = True,axis=1)
-
-                    denp = np.asarray(dof_edge)
-
-
-                #degrees of freedem: edge            
-
-                #convert into numpy array
-                dinp = np.asarray(dof_int)
-                #denp = np.asarray(dof_edge)
-
-                #load vector: dof interni
-                #print("load vector")
-                lv0 = self.load_vector(func,opts)
-                #raise()
-                #lv.at[(11,),"cp"] = 0.
-                if is_periodic == True :
-                    lv = self.make_vector_periodic(lv0)
-
-                else :
-
-                    lv = lv0.drop( index_edge ) 
-                    
-                    XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
-                    for k in range(self.dim()):
-                        kv = self.knots_vectors()[k]
-                        #nmax = kv.n()-1
-                        xmin = kv.xmin()#min(kv.knots())
-                        xmax = kv.xmax()#max(kv.knots())
-                        for i in index_edge:
-                            if i[k] == 0 :
-                                XY.at[i,k] = xmin
-                            else :
-                                XY.at[i,k] = xmax
-
-
-                    xy = np.asarray(XY).astype(float)
-                    #if self.dim() == 1 :
-                    #    xy = xy.reshape((len(xy),))
-
-                    #dof di bordo
-                    #print("gDnp")
-                    gDnp = func(xy)#.astype(float)
-
-                    if self.codim() == 1 :
-                        a = gDnp.copy()
-                        gDnp = np.zeros(shape=(len(a),self.codim()))
-                        gDnp[:,0] = a
-                        del a
-                    gDnpND = gDnp
-                    
-                    #raise()
-
-                #raise()
-
-                ###        
-                #print("ciao")
-                #lvnpND = np.asarray(lv["cp"]).astype(float)
-                #lvnpND = lvnpND.reshape((len(lv),self.codim()))
-                #for i in range(len(lv)):
-                #    lvnpND[i,:] = lv["cp"][i]   
+                #
+                #il = self.index_list()
+                #it = [tuple(i) for i in il]
+                #dof = self.dof()
+                #delindex = [ i for i in it if i not in dof.index ]
+                #dof_int = om.copy()
+                #dof_int.drop( delindex ,inplace = True,axis=0)
+                #dof_int.drop( delindex ,inplace = True,axis=1)
                 
-                lvnpND = np.asarray([ np.asarray(i) for i in lv["cp"] ] )#.astype(float)
-                lvnpND = lvnpND.reshape((len(lv),self.codim()))
-
-                #raise()
+                dof_int = self.make_matrix_periodic(om)
 
 
-                #prodotto righe per colonne
-                #edlv = np.dot(denp,gDnp)
-                #edlvND = edlv
-
-                # -> da rivedere
-                # qui devo introdurre del codice per gestire 
-                # il fatto che la Bspline può essere periodica
-
-
-                out = pd.DataFrame(index=lv.index,columns=np.arange(0,self.codim()))
-                #index = self.index_list()
-                #it = [ tuple(j) for j in index ]
-                for k in range(self.codim()):
-
-                    lvnp = lvnpND[:,k]
-
-                    if is_periodic == False :
-
-                        gDnp = gDnpND[:,k]
-                        gDnp = gDnp.reshape((len(gDnp),))
-                        edlv = np.dot(denp,gDnp)
-                        #edlv = edlvND[:,k]
-
-                        #
-                        #edlv = edlv.reshape((len(edlv),))
-
-                        #
-                        cpint = scipy.linalg.solve(dinp,lvnp-edlv,assume_a="sym") 
-                    else :
-                        cpint = scipy.linalg.solve(dinp,lvnp,assume_a="sym") 
-
-                    #cp = pd.DataFrame(index=it,columns=["cp"])
-
-                    out[k] = cpint
-
-                #assegno ai control points i valori calcolati
-                #valori interni
-                if is_periodic == True :
-                    effindex = self.get_effective_index()
+            else :
+                
+                if opts["interpolation"] == True :
+                #indici dei dof interni e di bordo
+                    index_int  = edge.index[ edge["corner"] == False ]
+                    index_edge = edge.index[ edge["corner"] == True  ]
                 else :
-                    effindex = index_int
-                for i in range(len(effindex)):
-                    j = effindex[i]
-                    self.set_cp(j,np.asarray(out.iloc[i,:]))
-                    #out.iloc[out.index == j] = cpint[i]
+                    index_int  = edge.index#[ edge["corner"] == False ]
+                    index_edge = []#edge.index[ edge["corner"] == True  ]
 
-                #assegno ai control points i valori calcolati
-                #valori di bordo interpolanti
-                if is_periodic == False:
-                    for i in range(len(index_edge)):
-                        j = index_edge[i]
-                        self.set_cp(j,gDnpND[i,:])
-                        #out.iloc[out.index == j] = gDnp[i]
+
+                 #
+                dof_int = om.copy()
+                dof_int.drop( index_edge ,inplace = True,axis=0)
+                dof_int.drop( index_edge ,inplace = True,axis=1)
+
+                #
+                dof_edge = om.copy()
+                dof_edge.drop( index_edge ,inplace = True,axis=0)
+                dof_edge.drop( index_int  ,inplace = True,axis=1)
+
+                denp = np.asarray(dof_edge)
+
+
+            #degrees of freedem: edge            
+
+            #convert into numpy array
+            dinp = np.asarray(dof_int)
+            #denp = np.asarray(dof_edge)
+
+            #load vector: dof interni
+            #print("load vector")
+            lv0 = self.load_vector(func,opts)
+            #lv.at[(11,),"cp"] = 0.
+            if is_periodic == True :
+                lv = self.make_vector_periodic(lv0)
+                
+            else :
+                
+                lv0.drop( index_edge  ,inplace = True) 
+
+                XY = pd.DataFrame(index = index_edge,columns=np.arange(0,self.dim()))
+                for k in range(self.dim()):
+                    kv = self.knots_vectors()[k]
+                    nmax = kv.n()-1
+                    xmin = min(kv.knots())
+                    xmax = max(kv.knots())
+                    for i in index_edge:
+                        if i[k] == nmax :
+                            XY.at[i,k] = xmax
+                        else :
+                            XY.at[i,k] = xmin
+
+                xy = np.asarray(XY).astype(float)
+                #if self.dim() == 1 :
+                #    xy = xy.reshape((len(xy),))
+
+                #dof di bordo
+                #print("gDnp")
+                gDnp = func(xy)#.astype(float)
+
+                if self.codim() == 1 :
+                    a = gDnp.copy()
+                    gDnp = np.zeros(shape=(len(a),self.codim()))
+                    gDnp[:,0] = a
+                    del a
+                gDnpND = gDnp
+
+            #raise()
+
+            ###        
+            #print("ciao")
+            lvnpND = np.asarray(lv["cp"])#.astype(float)
+            lvnpND = np.zeros(shape=(len(lv),self.codim()))
+            for i in range(len(lv)):
+                lvnpND[i,:] = lv["cp"][i]   
+
+            #raise()
+
+
+            #prodotto righe per colonne
+            #edlv = np.dot(denp,gDnp)
+            #edlvND = edlv
+
+            # -> da rivedere
+            # qui devo introdurre del codice per gestire 
+            # il fatto che la Bspline può essere periodica
+
+
+            out = pd.DataFrame(index=lv.index,columns=np.arange(0,self.codim()))
+            #index = self.index_list()
+            #it = [ tuple(j) for j in index ]
+            for k in range(self.codim()):
+
+                lvnp = lvnpND[:,k]
+
+                if is_periodic == False :
+
+                    gDnp = gDnpND[:,k]
+                    gDnp = gDnp.reshape((len(gDnp),))
+                    edlv = np.dot(denp,gDnp)
+                    #edlv = edlvND[:,k]
+
+                    #
+                    #edlv = edlv.reshape((len(edlv),))
+
+                    #
+                    cpint = scipy.linalg.solve(dinp,lvnp-edlv,assume_a="sym") 
+                else :
+                    cpint = scipy.linalg.solve(dinp,lvnp,assume_a="sym") 
+
+                #cp = pd.DataFrame(index=it,columns=["cp"])
+
+                out[k] = cpint
+
+            #assegno ai control points i valori calcolati
+            #valori interni
+            effindex = self.get_effective_index()
+            for i in range(len(effindex)):
+                j = effindex[i]
+                self.set_cp(j,np.asarray(out.iloc[i,:]))
+                #out.iloc[out.index == j] = cpint[i]
+
+            #assegno ai control points i valori calcolati
+            #valori di bordo interpolanti
+            if is_periodic == False:
+                for i in range(len(index_edge)):
+                    j = index_edge[i]
+                    self.set_cp(j,gDnpND[i])
+                    #out.iloc[out.index == j] = gDnp[i]
 
         return self.control_points()
     
@@ -1420,7 +1359,7 @@ class Bspline :
         new_sh = shape(dim=self.dim()-1,codim=self.codim())        
         kv     = [ self.knots_vectors()[ii] for ii in range(0,self.dim()) if ii != n ]  
         prop    = self.properties.copy()#.drop(n)
-        prop["periodic"] = np.delete(prop["periodic"],n)
+        prop["periodic"] = prop["periodic"].drop(n)
         curve  = Bspline(new_sh,kv,properties=prop)
         
         self._ready_trace[n] = True
@@ -1858,7 +1797,7 @@ class Bspline :
     ###
     #BEM
     
-    ###
+    ##
     def stiffness_matrix_BEM(self,k=None,opts=None):
         
         opts = self.prepare_opts(opts)
@@ -1873,40 +1812,40 @@ class Bspline :
         wavevector = k 
 
         #
-        lunghezza  = 1
-        lunghezza2 = 1
-        for k in range(self.dim()):
-            lunghezza = lunghezza*opts["N"][k]
-            lunghezza2 = lunghezza2*opts["N2"][k]
-        Xintegration = np.zeros(shape=(lunghezza,self.dim()))
-        Xintegration2 = np.zeros(shape=(lunghezza2,self.dim()))
-        Yintegration = Xintegration.copy()
-        Yintegration2 = Xintegration2.copy()
+        #lunghezza  = 1
+        #lunghezza2 = 1
+        #for k in range(self.dim()):
+        #    lunghezza = lunghezza*opts["N"][k]
+        #    lunghezza2 = lunghezza2*opts["N2"][k]
+        #Xintegration = np.zeros(shape=(lunghezza,self.dim()))
+        #Xintegration2 = np.zeros(shape=(lunghezza2,self.dim()))
+        #Yintegration = Xintegration.copy()
+        #Yintegration2 = Xintegration2.copy()
 
         #
-        lenX = len(Xintegration)
-        lenXY = lenX*lenX
-        mesh = np.zeros((lenXY,2),dtype=object)
-        if self.dim() == 1:
-            mesh = mesh.astype(float)
+        #lenX = len(Xintegration)
+        #lenXY = lenX*lenX
+        #mesh = np.zeros((lenXY,2),dtype=object)
+        #if self.dim() == 1:
+        #    mesh = mesh.astype(float)
 
 
         #
-        lenX2 = len(Xintegration2)
-        lenXY2 = lenX2*lenX2
-        mesh2 = np.zeros((lenXY2,2),dtype=object)
-        if self.dim() == 1:
-            mesh2 = mesh2.astype(float)
+        #lenX2 = len(Xintegration2)
+        #lenXY2 = lenX2*lenX2
+        #mesh2 = np.zeros((lenXY2,2),dtype=object)
+        #if self.dim() == 1:
+        #    mesh2 = mesh2.astype(float)
 
 
         #X = np.full(self.dim(),0.0,dtype=object)
-        X = np.full(self.dim(),0.0,dtype=object)
-        X2 = X.copy()
-        for k in range(self.dim()):
-            X[k] =  np.full(opts["N"][k],0.0)
-            X2[k] =  np.full(opts["N2"][k],0.0)
-        Y = X.copy()     
-        Y2 = X2.copy()
+        #X = np.full(self.dim(),0.0,dtype=object)
+        #X2 = X.copy()
+        #for k in range(self.dim()):
+        #    X[k] =  np.full(opts["N"][k],0.0)
+        #    X2[k] =  np.full(opts["N2"][k],0.0)
+        #Y = X.copy()     
+        #Y2 = X2.copy()
 
         #a djacency matrix
         am = self.adjacency_matrix()
@@ -1942,18 +1881,18 @@ class Bspline :
         out = pd.DataFrame(0.0,index=it,columns=it,dtype=np.complex)
 
         # unità immaginaria
-        I = np.complex(0,1)
+        #I = np.complex(0,1)
 
         def foundamental(d):
-            return scipy.special.hankel1(np.full(len(d),0),wavevector*d)*I/4.0  
+            return scipy.special.hankel1(np.full(len(d),0),wavevector*d)*1.j/4.0  
 
-        def integrate_quad(x,y):
-            l = left.evaluate(x)
-            r = right.evaluate(y)#.conjugate()
-            dl = [ norm(i) for i in der.evaluate(x) ]
-            dr = [ norm(i) for i in der.evaluate(y) ]
-            xx = self.evaluate(x)#.astype(self.properties["dtype"])
-            yy = self.evaluate(y)#.astype(self.properties["dtype"])
+        def integrate_quad(t,s):
+            l = left.evaluate(t)
+            r = right.evaluate(s)#.conjugate()
+            dl = [ norm(i) for i in der.evaluate(t) ]
+            dr = [ norm(i) for i in der.evaluate(s) ]
+            xx = self.evaluate(t)#.astype(self.properties["dtype"])
+            yy = self.evaluate(s)#.astype(self.properties["dtype"])
             d = np.asarray([ norm(i) for i in xx-yy ])
             f = foundamental(d)
             return f*l*r*dl*dr
@@ -1972,10 +1911,10 @@ class Bspline :
             #f = foundamental(d)
             #return f*d*l*dl*dr
             
-        if opts["random"] == True:
-            generate = np.random.uniform
-        else :
-            generate = np.linspace
+        #if opts["random"] == True:
+        #    generate = np.random.uniform
+        #else :
+        #    generate = np.linspace
 
         #    
         #mX = None
@@ -1991,6 +1930,8 @@ class Bspline :
         conta = 0
         tot = int(n*(n+1)/2)
         area = br["area"]
+        num  = opts["N"][0]
+        num2 = opts["N2"][0]
         for i in range(0,n):
 
             #
@@ -2011,7 +1952,7 @@ class Bspline :
 
                 #
                 if opts["print"] :
-                    print(conta,"/",tot,":",r,"-",c,end="\r",flush=True)
+                    print(conta,"/",tot,":",r,"-",c,end="\r")
 
                 #
                 areaY = area[c]
@@ -2030,59 +1971,69 @@ class Bspline :
                     #
                     #res = my_cycle_step(r,c)
                     
-                if am.at[r,c] == False:
-                    for k in range(self.dim()):
-                        num = opts["N"][k]
-                        X[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
-                        Y[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
-
-                else :                
-                    for k in range(self.dim()):
-                        num = opts["N2"][k]
-                        X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
-                        Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
-
-
-                if am.at[r,c] == False :
-
-                    # devo usare np.meshgrid
-                    mX = np.meshgrid(*X)
-                    mY = np.meshgrid(*Y)
-
-
-                    for k in range(self.dim()):
-                        Xintegration[:,k] = mX[k].flatten()
-                        Yintegration[:,k] = mY[k].flatten()
-
-                    for i in range(lenX):
-                        for j in range(lenX):
-                            k = lenX*i+j
-                            mesh[k,0] = Xintegration[i]
-                            mesh[k,1] = Yintegration[j]
-
-                    y = integrate(mesh)
-
-                else :    
-
-                    mX = np.meshgrid(*X2)
-                    mY = np.meshgrid(*Y2)
-
-                    for k in range(self.dim()):
-                        Xintegration2[:,k] = mX[k].flatten()
-                        Yintegration2[:,k] = mY[k].flatten()
-
-                    for i in range(lenX2):
-                        for j in range(lenX2):
-                            k = lenX2*i+j
-                            mesh2[k,0] = Xintegration2[i]
-                            mesh2[k,1] = Yintegration2[j]
-
-                    y = integrate(mesh2)
+                #if am.at[r,c] == False:
+                #    for k in range(self.dim()):
+                #        num = opts["N"][k]
+                #        X[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                #        Y[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
+                
+                #else :                
+                #    for k in range(self.dim()):
+                #        num = opts["N2"][k]
+                #        X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+                #        Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
+                
+                            
+                #if am.at[r,c] == False :
+                #
+                #    # devo usare np.meshgrid
+                #    mX = np.meshgrid(*X)
+                #    mY = np.meshgrid(*Y)
+                #
+                #
+                #    for k in range(self.dim()):
+                #        Xintegration[:,k] = mX[k].flatten()
+                #        Yintegration[:,k] = mY[k].flatten()
+                #
+                #    for i in range(lenX):
+                #        for j in range(lenX):
+                #            k = lenX*i+j
+                #            mesh[k,0] = Xintegration[i]
+                #            mesh[k,1] = Yintegration[j]
+                #
+                #    y = integrate(mesh)
+                #
+                #else :    
+                #
+                #    mX = np.meshgrid(*X2)
+                #    mY = np.meshgrid(*Y2)
+                #
+                #    for k in range(self.dim()):
+                #        Xintegration2[:,k] = mX[k].flatten()
+                #        Yintegration2[:,k] = mY[k].flatten()
+                #
+                #    for i in range(lenX2):
+                #        for j in range(lenX2):
+                #            k = lenX2*i+j
+                #            mesh2[k,0] = Xintegration2[i]
+                #            mesh2[k,1] = Yintegration2[j]
+                #
+                #    y = integrate(mesh2)
 
                 ###
                 # VALUTAZIONE DELL'INTEGRALE
 
                 #y = integrate(mesh)
+                num0 = num if am.at[r,c] == False else num2 
+                    
+                X = np.linspace(br.at[r,("min",0)],br.at[r,("max",0)],num0)
+                Y = np.linspace(br.at[c,("min",0)],br.at[c,("max",0)],num0)
+                
+                X,Y = np.meshgrid(X,Y)
+                
+                #mesh = np.array([X.flatten(),Y.flatten()]).transpose()
+                y = integrate_quad(X.flatten(),Y.flatten())
+                
                 #print(y)
                 res = np.nanmean(y)*areaX*areaY
 
@@ -2111,7 +2062,7 @@ class Bspline :
             left.set_cp(r,0.0)
 
         # TENGO CONTO DELLA PERIODICITA'        
-        persm = make_matrix_periodic(self,self,out)
+        persm = self.make_matrix_periodic(out)
 
         #    
         if opts["copy_sm_BEM"] == True :
@@ -2132,13 +2083,13 @@ class Bspline :
             return self._lv_BEM
             
         #
-        X = np.full(self.dim(),0.0,dtype=object)
-        for k in range(0,self.dim()):
-            X[k] =  np.full(opts["N"][k],0.0)
-        conta = 1
-        for k in range(0,self.dim()):
-            conta = conta * opts["N"][k]
-        Xintegration = np.zeros(shape=(conta,self.dim()))
+        #X = np.full(self.dim(),0.0,dtype=object)
+        #for k in range(0,self.dim()):
+        #    X[k] =  np.full(opts["N"][k],0.0)
+        #conta = 1
+        #for k in range(0,self.dim()):
+        #    conta = conta * opts["N"][k]
+        #Xintegration = np.zeros(shape=(conta,self.dim()))
 
         #
         br = self.basis_range()
@@ -2161,12 +2112,13 @@ class Bspline :
             d = [ norm(i) for i in d0 ]
             return a*b*d
         
-        if opts["random"] == True:
-            generate = np.random.uniform
-        else :
-            generate = np.linspace
+        #if opts["random"] == True:
+        #    generate = np.random.uniform
+        #else :
+        #    generate = np.linspace
 
 
+        num = opts["N"][0]
         for i in il :
 
             scalar.set_cp(i,1.0)
@@ -2175,15 +2127,17 @@ class Bspline :
             if areaX == 0.0 :
                 continue   
                 
-            for k in range(self.dim()):
-                num = opts["N"][k]
-                X[k] = generate(br.at[i,("min",k)],br.at[i,("max",k)],num)
+            #for k in range(self.dim()):
+            #    num = opts["N"][k]
+            #    X[k] = generate(br.at[i,("min",k)],br.at[i,("max",k)],num)
+            X = np.linspace(br.at[i,("min",0)],br.at[i,("max",0)],num)
                     
-            m = np.meshgrid(*X)
-            for k in range(self.dim()):
-                Xintegration[:,k] = m[k].flatten()
+            #m = np.meshgrid(*X)
+            #for k in range(self.dim()):
+            #    Xintegration[:,k] = m[k].flatten()
 
-            y = integrate (Xintegration)
+            #y = integrate (Xintegration)
+            y = integrate (X)
             out.at[i,"cp"] = np.mean(y) * areaX
 
             scalar.set_cp(i,0.0)
@@ -2282,7 +2236,7 @@ class Bspline :
         opts = self.prepare_opts(opts)
         
         #if opts["ready_slp_BEM"] == True and self._ready_slp_BEM == True :
-        #    return self._slp_BEM  
+        #    return self._slp_matrix_BEM  
         
         if opts["print"] :
             print("single_layer_potential_basis_BEM")
@@ -2292,25 +2246,13 @@ class Bspline :
         
         if opts["ready_slp_BEM"] == True :
             if self._ready_slp_BEM == True :
-                slp = self._slp_BEM    
-                #allnewxy = [ tuple(i) for i in XY]
-                #newindex = [ i not in slp.index for i in allnewxy ]
-                oldindex = np.asarray([np.asarray(i) for i in slp.index] )
-                newindex = np.full(len(XY),True)
-                n = len(XY)
-                for i in range(n):
-                    if opts["print"] == True : print(i,"/",n,end="\r") 
-                    xy = XY[i]
-                    dist = np.sqrt(np.sum(np.power(xy-oldindex,2.0),axis=1)).min()
-                    if dist < opts["prec"]:
-                        newindex[i] = False
-                        continue
+                slp = self._slp_matrix_BEM    
+                allnewxy = [ tuple(i) for i in XY]
+                newindex = [ i not in slp.index for i in allnewxy ]
                 newXY = XY[newindex]
                 if len(newXY) == 0 : #li ho già calcolati tutti
                     #print("ciao")
                     return slp   
-                else :
-                    print("\nNot all desired points has already been calculated:",len(newXY))
              
         lenXY = len(newXY)
         if opts["print"] :
@@ -2355,20 +2297,21 @@ class Bspline :
             if opts["print"] :
                 print("Updating slp matrix")
                 
-            if self._slp_BEM is None :
-                self._slp_BEM = out0.copy()        
+            if self._slp_matrix_BEM is None :
+                self._slp_matrix_BEM = out0.copy()        
             else :
-                slp = self._slp_BEM    
+                slp = self._slp_matrix_BEM    
                 i1 = np.asarray(slp.index)
                 i2 = np.asarray(out0.index)
+                #index = np.unique(np.append(i1,i2))                
                 index1 = [ tuple(i) not in tuple(i2) for i in i1 ]
+
                 result = pd.concat([slp[index1],out0],verify_integrity=True)
-                result["index"] = result.index
+                self._slp_matrix_BEM = result.copy()
+                
                 outindex = [ tuple(i) for i in XY]
-                out = result.loc[ [ i in outindex for i in result["index"] ]  ]
-                self._slp_BEM = result.copy()
-                del self._slp_BEM["index"]
-                del out["index"]
+                columns = out0.columns
+                out = result.loc[outindex,columns]
 
             self._ready_slp_BEM = True
         return out
@@ -2391,26 +2334,8 @@ class Bspline :
             slpB0 = slpB.copy()
             
         #
-        #index = [ tuple(i) for i in XY]
-        #slpB0["index"] = slpB0.index
-        #slpB = slpB0.loc[ [ i in index for i in slpB0["index"] ]  ]
-        #del slpB["index"]
-        oldindex = np.asarray([np.asarray(i) for i in slpB0.index] )
-        newindex = np.full(len(slpB0),-1)
-        n = len(XY)
-        for i in range(n):
-            if opts["print"] == True : print(i,"/",n,end="\r") 
-            xy = XY[i]
-            vett = np.sqrt(np.sum(np.power(xy-oldindex,2.0),axis=1))
-            dist = vett.min()
-            indice = np.argmin(vett)
-            if dist < opts["prec"]:
-                newindex[i] = indice
-                continue
-        #raise()
-        newindex = newindex[newindex != -1]
-        slpB = slpB0.iloc[newindex]
-        #slpB = slpB0.loc[index,slpB0.columns]
+        index = [ tuple(i) for i in XY]
+        slpB = slpB0.loc[index,slpB0.columns]
   
         #        
         slpBnp = np.asarray(slpB)        
@@ -2421,7 +2346,7 @@ class Bspline :
 
         #
         out = pd.DataFrame(index=slpB.index,columns=["x","value"])
-        out["x"] = [ tuple(i) for i in XY]
+        out["x"] = index#[ tuple(i) for i in XY]
         out["value"] = outnp
         
         if opts["copy_sol_BEM"] == True :
@@ -2520,7 +2445,7 @@ class Bspline :
         elif variable == "sm-BEM" :
             var = self._stiffness_matrix_BEM
         elif variable == "slp-BEM" :
-            var = self._slp_BEM
+            var = self._slp_matrix_BEM
         elif variable == "lv-BEM" :
             var = self._lv_BEM
         elif variable == "ind_sol-BEM" :
@@ -2566,7 +2491,7 @@ class Bspline :
             var = var.drop('index',axis=1)
             var.columns = [tuple_from_str(i) for i in var.columns]
             var = var.applymap(np.complex)
-            self._slp_BEM = var.copy()
+            self._slp_matrix_BEM = var.copy()
             self._ready_slp_BEM = True   
         
         elif variable == "sol-BEM":
@@ -2590,27 +2515,18 @@ class Bspline :
             self._ready_lv_BEM = True     
                      
         elif variable == "cp" :
-            var.columns = [ int(i) for i in var.columns]
-            n = self.codim()
-            cp = np.zeros((n,),dtype=float)
-            #print("index:",var.index,flush=True)
-            #print("col:",var.columns)
-            for i in var.index:
-                cp = np.asarray(var.loc[i:i,0:n]).reshape((n,))
-                self.set_cp(i,cp)
+            var.columns = [ int(i) for i in var.columns ]
+            index = var.index
+            for i in index:
+                for k in range(self.codim()):
+                    self._cp[i,k] = var.at[i,k]
+            #self._cp = var.copy()
         
         return var
-   
-#######################################
-
-_ready_lv_BEM_disc = False
-_ready_sm_BEM_disc = False
-
-_sm_BEM_disc = None
-_lv_BEM_disc = None
+    
 
 ###
-def sol_to_np_BEM(sol):
+def sol_to_np_BEM(self,sol):
     # convert into numpy array
     r = len(sol)
     c = len(sol["x"][0])
@@ -2624,21 +2540,34 @@ def sol_to_np_BEM(sol):
     #
     Valnp = np.asarray(sol["value"],dtype=np.complex)
     return Xnp,Valnp
- 
-### 
+
+    
 def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
     
+    #opts = self.prepare_opts(opts)
+        
+    #if opts["ready_sm_BEM"] == True and self._ready_sm_BEM == True :
+    #    return self._stiffness_matrix_BEM
+
+    #if opts["print"] :
+    #    print("stiffness_matrix_BEM")
+
+
     wavevector = k 
     
     dim = bsLeft.dim()
 
     #
     lunghezza  = 1
+    #lunghezzaRight = 1
     for k in range(dim):
         lunghezza = lunghezza*opts["N"][k]
-    Xintegration = np.zeros(shape=(int(lunghezza),dim))
+        #lunghezza2 = lunghezza2*opts["N2"][k]
+    Xintegration = np.zeros(shape=(lunghezza,dim))
+    #Xintegration2 = np.zeros(shape=(lunghezza2,self.dim()))
     Yintegration = Xintegration.copy()
-    
+    #Yintegration2 = Xintegration2.copy()
+
     #
     lenXL = len(Xintegration)
     lenXR = len(Yintegration)
@@ -2648,11 +2577,28 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
         mesh = mesh.astype(float)
 
 
+    #
+    #lenX2 = len(Xintegration2)
+    #lenXY2 = lenX2*lenX2
+    #mesh2 = np.zeros((lenXY2,2),dtype=object)
+    #if self.dim() == 1:
+    #    mesh2 = mesh2.astype(float)
+
+
+    #X = np.full(self.dim(),0.0,dtype=object)
     X = np.full(dim,0.0,dtype=object)
     Y = np.full(dim,0.0,dtype=object)
+    #X2 = X.copy()
     for k in range(dim):
         X[k] =  np.full(opts["N-L"][k],0.0)
         Y[k] =  np.full(opts["N-R"][k],0.0)
+        #X[k] =  np.full(opts["N2"][k],0.0)
+    #Y = X.copy()     
+    #Y2 = X2.copy()
+
+    #a djacency matrix
+    #am = self.adjacency_matrix()
+    
     
     #
     ilL = bsLeft.index_list()
@@ -2676,11 +2622,11 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
     
     # basis function: left 
     left = bsLeft._scalar(opts)
-    left.clear_cp()
+    right.clear_cp()
     
     # basis function: right
-    right = bsRight._scalar(opts)
-    right.clear_cp()
+    scalarR = bsRight._scalar(opts)
+    scalarR.clear_cp()
     
    
     # unità immaginaria
@@ -2701,22 +2647,42 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
         return f*l*r*dl*dr
 
     def integrate(xy):
+        #x = xy[:,0]
+        #y = xy[:,1]
         return integrate_quad(xy[:,0],xy[:,1])
+        #l = left.evaluate(x)
+        #r = right.evaluate(y)#.conjugate()
+        #dl = [ norm(i) for i in der.evaluate(x) ]
+        #dr = [ norm(i) for i in der.evaluate(y) ]
+        #xx = self.evaluate(x).astype(self.properties["dtype"])
+        #yy = self.evaluate(y).astype(self.properties["dtype"])
+        #d = np.asarray([ norm(i) for i in xx-yy ])
+        #f = foundamental(d)
+        #return f*d*l*dl*dr
 
     if opts["random"] == True:
         generate = np.random.uniform
     else :
         generate = np.linspace
 
+    #    
+    #mX = None
+    #mY = None
+
+
 
     ###
     # CICLO
     successful = False
-    res =  np.complex(0,0)   
-    conta = 1
-    tot = int(len(itL)*(len(itR)))    
+    res =  np.complex(0,0)
+    #n = len(itL)#am.shape[0]
+    conta = 0
+    tot = int(len(itL)*(len(itR)+1)/2)    
     
     for r in itL:
+
+        #
+        #r = it[i]#am.index[i] 
 
         #
         areaX = areaL[r]
@@ -2725,9 +2691,12 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
 
         #
         left.set_cp(r,1.0)
-        
+        #der_left  = derivatives.at[r,"derivative"]#left.derivative()
+
         for c in itR:
-            
+
+            #c = it[j]
+
             #
             if opts["print"] :
                 print(conta,"/",tot,":",r,"-",c,end="\r")
@@ -2740,10 +2709,29 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
             #
             right.set_cp(c,1.0)
 
-            #
+
+            #successful = False #not opts["random"]
+            #while not successful :
+
+                #print(r,"-",c)
+
+                #
+                #res = my_cycle_step(r,c)
+
+            #if am.at[r,c] == False:
             for k in range(dim):
+                #num = opts["N-L"][k]
                 X[k] = generate(brL.at[r,("min",k)],brL.at[r,("max",k)],opts["N-L"][k])
                 Y[k] = generate(brR.at[c,("min",k)],brR.at[c,("max",k)],opts["N-R"][k])
+
+            #else :                
+            #    for k in range(self.dim()):
+            #        num = opts["N2"][k]
+            #        X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+            #        Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
+
+
+            #if am.at[r,c] == False :
 
             # devo usare np.meshgrid
             mX = np.meshgrid(*X)
@@ -2755,25 +2743,51 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
 
             for i in range(lenXL):
                 for j in range(lenXR):
-                    k = lenXL*i+j
+                    k = lenX*i+j
                     mesh[k,0] = Xintegration[i]
                     mesh[k,1] = Yintegration[j]
 
             y = integrate(mesh)
 
-            
+            #else :    
+            #
+            #    mX = np.meshgrid(*X2)
+            #    mY = np.meshgrid(*Y2)
+            #
+            #    for k in range(self.dim()):
+            #        Xintegration2[:,k] = mX[k].flatten()
+            #       Yintegration2[:,k] = mY[k].flatten()
+            #
+            #    for i in range(lenX2):
+            #        for j in range(lenX2):
+            #            k = lenX2*i+j
+            #            mesh2[k,0] = Xintegration2[i]
+            #            mesh2[k,1] = Yintegration2[j]
+            #
+            #    y = integrate(mesh2)
+
             ###
             # VALUTAZIONE DELL'INTEGRALE
 
+            #y = integrate(mesh)
+            #print(y)
             res = np.nanmean(y)*areaX*areaY
-            
+
+            #
+            #if opts["random"] == True :
+            #    successful = not np.isnan(res)
+
+            #if not successful :
+            #    print("found nan value for [",r,",",c,"]: repeating the cycle")
+
             ###
             # FINE
 
 
             #    
             out.at[r,c] = res
-            
+            #out.at[c,r] = res #matrice simmetrica
+
             #cancello
             right.set_cp(c,0.0)
 
@@ -2784,110 +2798,52 @@ def stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k=None,opts=None):
         left.set_cp(r,0.0)
 
     # TENGO CONTO DELLA PERIODICITA'        
-    persm = make_matrix_periodic(bsLeft,bsRight,out)
+    #persm = self.make_matrix_periodic(out)
 
+    #    
+    #if opts["copy_sm_BEM"] == True :
+    #    self._stiffness_matrix_BEM = persm.copy()
+    #    self._ready_sm_BEM = True        
+    #if opts["return_both"] == True:
+    #    return persm,out
     if opts["print"] :
         print("Finished")
-    return persm  
+    return out   
 
-###
 def stiffness_matrix_BEM_disconnected(bs,k,names,opts):
     
-    global _ready_sm_BEM_disc
-    global _sm_BEM_disc
-    
-    opts = prepare_opts(opts)
-    
-    if opts["ready_sm_BEM_disc"] == True and _ready_sm_BEM_disc == True :
-        return _sm_BEM_disc
-        
     index,mi,last,first = multi_index_disconnected(bs,names,opts)
     df = pd.DataFrame(columns=index,index=index)
     SM = df.reindex(columns=mi,index=mi)
 
-    calculated = []
     
     # elementi sulla diagonale
-    n = len(bs)
-    for i in range(n):     
-        if opts["print"] == True:
-            print("diagonal:",i,"/",n,end="\r")
-            
-        j = i
-        dest = (i,j) 
-        if dest in opts["copy-destination"] :
-            k = opts["copy-destination"].index(dest)
-            src = opts["copy-source"][k]
-            if src in calculated:
-                l,r = opts["copy-source"][opts["copy-source"].index(src)]
-                SM = copy_block(SM,l,r,i,j)
-                #SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
-                #SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
-                continue
-                
-        #else :
-        b = bs[i]            
-        b.prepare_opts(opts)            
-        sm = b.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
-        SM.loc[(i,first[i]):(i,last[i]),(i,first[i]):(i,last[i])] = np.asarray(sm)
+    for i in range(len(bs)):        
+        b = bs[i]
         
-        calculated = calculated + [(i,j)]
+        b.prepare_opts(opts)
+        
+        sm = b.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
+        #lv = b.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file  
+        
+        #LV = np.concatenate(LV,lv)
+        SM.loc[(i,first[i]):(i,last[i]),(i,first[i]):(i,last[i])] = sm
             
         
     # elementi fuori diagonale
-    conta = 1
-    nn = int(n*(n+1)/2-n)
-    for i in range(n):
-        for j in range(i+1,n):
-            if opts["print"] == True:
-                print("off diagonal:",conta,"/",nn,end="\r")
-              
-            dest = (i,j) 
-            if dest in opts["copy-destination"] :
-                k = opts["copy-destination"].index(dest)
-                src = opts["copy-source"][k]
-                if src in calculated:
-                    l,r = opts["copy-source"][opts["copy-source"].index(src)]
-                    SM = copy_block(SM,l,r,i,j)
-                    SM = copy_block(SM,r,l,j,i)
-                    #SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = \
-                    #SM.loc[(l,first[l]):(l,last[l]),(r,first[r]):(r,last[r])] 
-                    continue
+    for i in range(len(bs)):
+        for j in range(i+1,len(bs)):
             
             bsLeft  = bs[i]
             bsRight = bs[j]
             sm = stiffness_matrix_BEM_disconnected_private(bsLeft,bsRight,k,opts)
             
-            SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = np.asarray(sm)
-            SM.loc[(j,first[j]):(j,last[j]),(i,first[i]):(i,last[i])] = np.asarray(sm).T
+            SM.loc[(i,first[i]):(i,last[i]),(j,first[j]):(j,last[j])] = sm
+            SM.loc[(j,first[j]):(j,last[j]),(i,first[i]):(i,last[i])] = sm.T
             
-            calculated = calculated + [(i,j)]
-            conta += 1
-            
-    if opts["copy_sm_BEM_disc"] == True :
-        _sm_BEM_disc = SM
-        _ready_sm_BEM_disc = True
+    
     return SM
     
-###
-def get_block(SM,i,j,drop=False):
-    nl = np.sum(SM.index.get_level_values(0) == i)-1
-    nr = np.sum(SM.columns.get_level_values(0) == j)-1
-    if drop == False:
-        return SM.loc[(i,(0,)):(i,(nl,)),(j,(0,)):(j,(nr,))]
-    else :
-        a = SM.loc[(i,(0,)):(i,(nl,)),(j,(0,)):(j,(nr,))]
-        return a.droplevel(0,axis=0).droplevel(0,axis=1)
-
-###
-def copy_block(SM,i_src,j_src,i_dest,j_dest):
-    nl = np.sum(SM.index.get_level_values(0) == i_src)-1
-    nr = np.sum(SM.columns.get_level_values(0) == j_src)-1
-    SM.loc[(i_dest,(0,)):(i_dest,(nl,)),(j_dest,(0,)):(j_dest,(nr,))] = \
-    np.asarray(SM.loc[(i_src,(0,)):(i_src,(nl,)),(j_src,(0,)):(j_src,(nr,))])
-    return SM
-   
-###   
 def multi_index_disconnected(bs,names,opts):
         
     index = []
@@ -2906,17 +2862,8 @@ def multi_index_disconnected(bs,names,opts):
     #df = pd.DataFrame(columns=index,index=index)
   
     return index,mi,last,first
-   
-###   
-def load_vector_BEM_disconnected(bs,uinc,names,opts):
-
-    opts = prepare_opts(opts)
     
-    global _ready_lv_BEM_disc
-    global _lv_BEM_disc
-
-    if opts["ready_lv_BEM_disc"] == True and _ready_lv_BEM_disc == True :
-        return _lv_BEM_disc
+def load_vector_BEM_disconnected(bs,uinc,names,opts):
     
     index,mi,last,first = multi_index_disconnected(bs,names,opts)  
     LV = pd.DataFrame(columns=["cp"],index=index)   
@@ -2929,15 +2876,10 @@ def load_vector_BEM_disconnected(bs,uinc,names,opts):
         
         lv = b.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file  
         
-        LV.loc[(i,first[i]):(i,last[i]),"cp"] = np.asarray(lv["cp"])
-        
-    if opts["copy_lv_BEM_disc"] == True :
-        _lv_BEM_disc = LV.copy()
-        _ready_lv_BEM_disc = True
+        LV.loc[(i,first[i]):(i,last[i]),"cp"] = lv["cp"]
         
     return LV
 
-###
 def single_layer_potential_basis_BEM_disconnected(bs,XY,names,opts):
     
     index,mi,last,first = multi_index_disconnected(bs,names,opts) 
@@ -2956,84 +2898,13 @@ def single_layer_potential_basis_BEM_disconnected(bs,XY,names,opts):
         
     return SLPB
     
-###
-def make_matrix_periodic(Left,Right,out):
     
-    dofL = Left.dof()
-    dofR = Right.dof()
-            
-    persm = out.copy()
-
-    indexL = out.index
-    indexR = out.columns
-
-    delindexL = [ i for i in indexL if i not in dofL.index ]
-    perindexL = [ Left.get_periodic_index(i) for i in delindexL  ]
-
-    delindexR = [ i for i in indexR if i not in dofR.index ]
-    perindexR = [ Right.get_periodic_index(i) for i in delindexR  ]
-
-
-    for i in indexL:
-        for j in perindexR :
-            #ii = self.get_periodic_index(i)
-            jp = Right.get_periodic_index(j)
-            persm.at[i,j] += persm.at[i,jp]
-
-    for i in indexR:
-        for j in perindexL :
-            #ii = self.get_periodic_index(i)
-            jp = Left.get_periodic_index(j)
-            persm.at[j,i] += persm.at[jp,i]
-            #persm.at[j,i] = persm.at[i,j]
-
-    for i in delindexL:
-        persm.drop(i,inplace=True,axis=0)
-    for i in delindexR:
-        persm.drop(i,inplace=True,axis=1)
-        
-    return persm
- 
-###
-def prepare_opts(opts,bs=None):
-
-    if "ready_lv_BEM_disc" not in opts:
-        opts["ready_lv_BEM_disc"] = True
-    if "copy_lv_BEM_disc" not in opts:
-        opts["copy_lv_BEM_disc"] = True
-        
-    if "ready_sm_BEM_disc" not in opts:
-        opts["ready_sm_BEM_disc"] = True
-    if "copy_sm_BEM_disc" not in opts:
-        opts["copy_sm_BEM_disc"] = True 
-        
-    if "names" not in opts and bs is not None :
-        opts["names"] = [ i for i in np.arange(len(bs)) ]  
-        
-    if "N" not in opts and bs is not None :
-        opts["N"] = np.full(bs[0].dim(),4,dtype=int)
-    if "N-L" not in opts :
-        opts["N-L"] = opts["N"]
-    if "N-R" not in opts :
-        opts["N-R"] = opts["N"]
-        
-    if "equal" not in opts:
-        opts["equal"] = []
-        
-    opts["copy-source"] = []
-    opts["copy-destination"] = []
-    for i in opts["equal"]:
-        opts["copy-source"] += [i[0]]
-        opts["copy-destination"] += [i[1]]
-            
-    return opts
-
-### 
 def BEM_disconnected(bs,uinc=None,k=None,XY=None,opts=None):
     
     #SM = np.zeros(shape=(len(bs),len(bs)),dtype=object)
     
-    opts = prepare_opts(opts,bs)
+    if "names" not in opts :
+        opts["names"] = [ i for i in np.arange(len(bs)) ]  
     
     names = opts["names"]
     
@@ -3041,11 +2912,10 @@ def BEM_disconnected(bs,uinc=None,k=None,XY=None,opts=None):
     SM = stiffness_matrix_BEM_disconnected(bs,k,names,opts)    
     
     #Galerkin
-    smnp = np.asarray(SM).astype(np.complex)
-    lvnp = np.asarray(LV).reshape((len(LV),)).astype(np.complex)
+    smnp = np.asarray(SM)#.astype(np.complex)
+    lvnp = np.asarray(LV).reshape((len(lv),))#.astype(np.complex)
     # solution of Galerkin method
     Ind_Sol = scipy.linalg.solve(smnp,-lvnp,assume_a="sym")
-    ind_sol = pd.DataFrame(data=Ind_Sol,index=SM.index,columns=["value"])
     out = pd.DataFrame(data=ind_sol,index=SM.index,columns=["value"])
     
     # single layer potential basis  
@@ -3054,19 +2924,18 @@ def BEM_disconnected(bs,uinc=None,k=None,XY=None,opts=None):
     SLP = pd.DataFrame(columns= names,index=xy) 
     index,mi,last,first = multi_index_disconnected(bs,names,opts)  
     for i in range(len(bs)):
-        b = bs[i]
-        ind_sol2 = ind_sol[(i,first[i]):(i,last[i])]
-        slp = b.single_layer_potential_BEM(sol=ind_sol2,XY=XY,k=k,opts=opts)
-        SLP[names[i]] = np.asarray(slp["value"],dtype=np.complex)
-
-    SLP["value"] = SLP.sum(axis=1)
+        b = b[i]
+        ind_sol = Ind_Sol[(i,first[i]):(i,last[i])]
+        SLP[names[i]] = b.single_layer_potential_BEM(sol=ind_sol,XY=XY,k=k,opts=opts)
+    
+    SLP["value"] = SLP.mean(axis=1)
     SLP["x"] = SLP.index
-    SLP  = SLP [ ["x","value"] + names ]
     
     Xnp,Valnp = sol_to_np_BEM(SLP)
         
     return SLP,Xnp,Valnp
     
+        
 ###
 def norm(x):
     return np.sqrt(np.sum(np.power(x,2.0)))        
@@ -3079,6 +2948,7 @@ def tuple_from_str(string,comand=r'[0-9]+'):
 def tuple_float_from_str(string,comand=r"[+-]?\d+(?:\.\d+)?\.[+-]?\d+(?:\.\d+)?"):
     return tuple(map(float, re.findall(comand, string)))
 
+    
 ###        
 def overlaps(a, b):
     c = [ max(a[0],b[0]) , min(a[1],b[1]) ]
@@ -3087,6 +2957,196 @@ def overlaps(a, b):
         return None
     else :
         return c
+
+
+# Di seguito commento e spiego il corpo di alcune funzioni implementate nella classe `Bspline`
+
+# ### `stiffness_matrix_BEM`
+
+# La funzione consiste in due cicli `for` per calcolare la matrice $A^{Gal}_{ij}$: un ciclo per le colonne e uno per le righe.
+# Si ricordi che il calcolo degli integrali viene eseguito il $\left[0,1\right]\times\left[0,1\right]$.
+# Ad ogni step viene calcolato un elemento di $A^{Gal}_{ij}$ valutando l'integrale della funzione `integrate`, che riceve in input un array di coppie di punti $\left[s,t\right]$ tramite la variabile `mesh2`.
+# La funzione `integrate` richiama a sua volta `integrate_quad` che divide `mesh2` nelle due colonne:
+# - la colonna della variabile muta $t$ che corrisponde all'integrale sul primo intervallo  $\left[0,1\right]$
+# - la colonna della variabile mita $s$ che corrisponde all'integrale sul secondo intervallo  $\left[0,1\right]$
+# 
+# **I punti di integrazione** I punti in cui verrà valuata la funzione integranda sono generati nella seguente porzione di codice
+# ```
+# if am.at[r,c] == False:
+#     for k in range(self.dim()):
+#         num = opts["N"][k]
+#         X[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+#         Y[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
+# 
+# else :                
+#     for k in range(self.dim()):
+#         num = opts["N2"][k]
+#         X2[k] = generate(br.at[r,("min",k)],br.at[r,("max",k)],num)
+#         Y2[k] = generate(br.at[c,("min",k)],br.at[c,("max",k)],num)
+# ```
+# Nel nostro caso `self.dim()` vale $1$ perché stiamo integrando su un dominio $1D$, quindi possiamo ignorare la dipendenza da `k`.
+# 
+# I punti uniformemente distribuiti nel dominio delle funzioni di base sono generati dalla funzione `generate` (che nel nostro caso è uguale alla funzione `linspace` di `numpy`), che genera `num` punti tra `br.at[r,("min",k)]` e `br.at[r,("max",k)]`
+# ```
+# if opts["random"] == True:
+#     generate = np.random.uniform
+# else :
+#     generate = np.linspace
+# ```
+# Il dataframe `am` contiene la *adjacency matrix*, cioè la matrice che dice se le due funzioni di base hanno il dominio che si interseca o meno: se i domini sono disgiunti verranno usati `opts["N"]` punti di integrazione, altrimenti `opts["N2"]`, che di default è posto uguale a `opts["N"]`$^2$.
+# 
+# Le righe successive di codice servono soltanto a *riordinare* e rimaneggire opportunamente i punti generati in modo tale da inserirli in una matrice dalle dimensioni opportune.
+# 
+# **La funzione integranda** Il corpo della funzione `integrate_quad` è il seguente:
+# ```
+# def integrate_quad(t,s):
+#     l = left.evaluate(t)
+#     r = right.evaluate(s)#.conjugate()
+#     dl = [ norm(i) for i in der.evaluate(t) ]
+#     dr = [ norm(i) for i in der.evaluate(s) ]
+#     xx = self.evaluate(t)#.astype(self.properties["dtype"])
+#     yy = self.evaluate(s)#.astype(self.properties["dtype"])
+#     d = np.asarray([ norm(i) for i in xx-yy ])
+#     f = foundamental(d)
+#     return f*l*r*dl*dr
+# ```
+# `left` e `right` sono le funzioni di base (scalari) $\hat{\phi}_i,\hat{\phi}_j$, ottenute tramite la funzione `_scalar`:
+# ```
+# scalar = self._scalar(opts)
+# # basis function: left
+# left   = scalar.copy()
+# left.clear_cp()
+# # basis function: right
+# right  = scalar.copy()        
+# right.clear_cp()
+# ```
+# 
+# `der` è la derivata prima della Bspline in questione, ha dunque valori vettoriali.
+# 
+# All'interno di `integrate_quad` compaiono le seguenti variabili:
+# - `l` e `r` sono i valori assunti dalle funzioni di base nei punti specificati
+# - `dl` e `dr` sono i valori assunti dalla derivata prima `der`, di cui ne vado a valutare subito il modulo tramite la funzione `norm`
+# - `xx` e `yy` sono i valori assunti dalla Bspline in corrispondenza delle variabili mute `t` e d `s`, sono cioè i punti $\mathbf{x},\mathbf{y}\in\Gamma$
+# - `foundamental` è la soluzione fondamentale dell'equazione di Helmholtz in $2D$ che ho definito sfruttando le funzioni messe a disposizione dalla libreria `scipy.special`
+# ```
+# def foundamental(d):
+#     return scipy.special.hankel1(np.full(len(d),0),wavevector*d)*1.j/4.0  
+# ```
+# - `d` è l'input della funzione `foundamental`, perché il vettor d'onda `k` (che poi ricopio nella variabile `wavevector` che compare nel corpo della funzione `foundamental`) è in realtà fissato nel problema (è un input della funzione `stiffness_matrix_BEM`). `d` è la norma della differenza tra $\mathbf{x}$ e $\mathbf{y}$, infatti è calcolato come la norma della differenza tra `xx` e `yy`
+# 
+# **Assemblaggio della matrice** Usciti dalla funzione `integrate` vado ad eseguire la media (escludendo il valori `nan` usando la funzione `nanmean` di `numpy`) dell'array di valori restituiti, per poi moltiplicare per l'area dei domini della funzioni di base in considerazione:
+# ```
+# res = np.nanmean(y)*areaX*areaY
+# ```
+# per poi copiare il risultato nella variabile di output che conterrà la matrice $A^{Gal}_{ij}$
+# ```
+# out.at[r,c] = res
+# out.at[c,r] = res #matrice simmetrica
+# ```
+# La vera variabile di output è però `persm`, abbrevuazione di *periodic stiffness matrix*: alcune colonne e alcune righe di `out` vengono sommate ad altre ed elimino le righe e colonne in eccesso: questo viene fatto a seguito del discorso fatto sul numero di gradi di libertà che non coincide con il numero di funzioni di base Bspline nel caso di Bspline periodiche. Questo viene fatto nella seguente linea di codice:
+# ```
+# persm = self.make_matrix_periodic(out)
+# ```
+# 
+# 
+# 
+
+# ### `load_vector_BEM`
+
+# Il corpo della funzione `load_vector_BEM` è molto simile a quello della funzione `stiffness_matrix_BEM` con due sole differenze:
+# - ho un solo ciclo `for` perché devo valutare un vettore e non una matrice
+# - la funzion integranda `integrate` è ovviamente diversa
+# ```
+# def integrate(x):
+#     a = scalar.evaluate(x)
+#     xx = self.evaluate(x)
+#     b = gD(xx)
+#     d0 = der.evaluate(x)
+#     d = [ norm(i) for i in d0 ]
+#     return a*b*d
+# ```
+# - `x` è la variabile muta di integrazione
+# - `a` è il valore (scalare) assunto da una funzione di base
+# - `xx` è il valore assunto dalla Bspline, quindi è un array di punti $\mathbf{x}\in\Gamma$
+# - `b` è il valore assunto dalla funzione `gD` che nel nostro caso sarà ho un'onda piana o una funzione di Herglotz (si noti che la funzione `gD` è difinite in $\mathbf{R}^2$, inaftti prende come input la variabile `xx`)
+# - `d0` è la derivata della Bspline mentre `d` è il suo modulo
+# 
+# L'output della funzione `integrate` viene poi mediato e moltiplicato per l'area del dominio di integrazione
+# ```
+# y = integrate (Xintegration)
+# out.at[i,"cp"] = np.mean(y) * areaX
+# ```
+# per poi andare a *generare* la vera variabile di output `perlv` (*periodic load vector*) che tenga conto della periodicità della Bspline analogamente a quanto fatto prima 
+# ```
+# perlv = self.make_vector_periodic(out)
+# ```
+
+# ### `single_layer_potential_basis_BEM`
+
+# Il calcolo dei coefficienti $M_j\left(\mathbf{x}\right)$ richiede il calcolo di un integrale che *in forma* è identico al calcolo del *load vector* a patto di *parametrizzare* il punto $\mathbf{x}$.
+# 
+# Per ogni punto $\mathbf{x}\in\Omega^{+}$ il coefficiente $M_j\left(\mathbf{x}\right)$ viene calcolato tramite la funzione `load_vector_BEM` impostando come funzione `gD` la seguente:
+# ```
+# def foundamental_x(y):
+#     d = np.asarray([ norm(i)  for i in y-x0 ])
+#     return scipy.special.hankel1(np.full(len(d),0),k*d)*1.j/4.0
+# ```
+# `x0` corrisponde a $\mathbf{x}\in\Omega^{+}$ mentre `y` corrisponde alla variabile muta dell'integrale.
+# Ovviamente `x0` viene fatto variare facendogli assmumere tutti i valori richiesti
+# ```
+# for i in range(lenXY):
+#     if opts["print"] :
+#         print(i,"/",lenXY,end="\r")
+#     #x0 = XY[i,:]
+#     x0 = newXY[i,:]
+#     lvx0 = self.load_vector_BEM(foundamental_x,opts2)
+#     outnp[i] = lvx0["cp"]
+# ```
+# Si noti che `newXY` non sono tutti i punti richiesti dall'utente ma soltanto quelli non ancora calcolati: il codice infatti va poi a salvare i nuovi punti calcolati e una volta che l'utente richiede dei nuovi punti, anziché calcolarli a priori il codice prima controlla se questi erano già stati calcolati.
+# 
+# Questo controllo viene eseguito in questa porzione di codice
+# ```  
+# newXY = XY.copy()#[ tuple(i) for i in XY]
+#       
+# if opts["ready_slp_BEM"] == True :
+#     if self._ready_slp_BEM == True :
+#         slp = self._slp_matrix_BEM    
+#         allnewxy = [ tuple(i) for i in XY]
+#         newindex = [ i not in slp.index for i in allnewxy ]
+#         newXY = XY[newindex]
+#         if len(newXY) == 0 : #li ho già calcolati tutti
+#             #print("ciao")
+#             return slp 
+# ```
+# Nella parte finale della funzione `single_layer_potential_basis_BEM` si va soltato a creare un dataframe con tutti i punti richisti dall'utente, mettendo assieme quelli appena calcolati e quelli già presenti in memoria.
+
+# ### `BEM`
+
+# Riporto di seguito parte del corpo della funzione `BEM` (la parte rimanente non è fondamentale per la comprensione del codice)
+# ```
+# #indirect solution: Galerkin  method
+# sm = self.stiffness_matrix_BEM(k=k,opts=opts) #lo salvo su file
+# lv = self.load_vector_BEM(gD=uinc,opts=opts) #lo salvo su file        
+# sol = self.indirect_solution_BEM(sm,lv,opts)
+# 
+# #
+# slpB = self.single_layer_potential_basis_BEM(XY=XY,k=k,opts=opts) #lo salvo su file        
+# 
+# #
+# slp = self.single_layer_potential_BEM(sol=sol,slpB=slpB,XY=XY,k=k,opts=opts)
+# ```
+# Le uniche funzioni non ancora descritte sono:
+# - `indirect_solution_BEM`: risolve semplicemente il sistema lineare che derivata dal metodo di Galerkin, infatti prende come input soltanto la matrice `sm` e il vettore `lv` (e alcuni parametri opzionali di secondaria importanza)
+# ```
+# sol = scipy.linalg.solve(smnp,-lvnp,assume_a="sym")
+# ```
+# - `single_layer_potential_basis_BEM`: calcola la sommatoria $\left(\mathcal{S}\psi_N\right)\left( \mathbf{x}\right) = \sum_{j=1}^{N} c_j  M_j\left(\mathbf{x}\right)$ per i punti `XY` richiesti sfruttando la moltiplicazione righe per colonne tra la matrice `slpBnp` (output della funzione `single_layer_potential_basis_BEM` convertito da `DataFrame` di `pandas` in `ndarray` di `numpy`) e il vettore `solnp` (output della funzione `indirect_solution_BEM` convertito da `DataFrame` di `pandas` in `array` di `numpy`)
+# ```
+# outnp = np.dot(slpBnp,solnp)
+# ```
+
+# In[ ]:
+
 
 
 
