@@ -87,11 +87,14 @@ def analytic_solution_circle(uinc,XY,wmin,wmax,radius,wavevector,alpha,x=None,op
         opts = {}
     if "return" not in opts:
         opts["return"] = "np"
+    if "FFT" not in opts:
+        opts["FFT"] = False
     #if "norm" not in opts:
     #opts["norm"] = None
     
-    #fft = FFT(uinc,opts=opts)
-    #NN = np.sqrt(len(fft))
+    if opts["FFT"] == True:
+        fft = FFT(uinc,opts=opts)
+        NN = np.sqrt(len(fft))
     
     # converto un punto in 2D in un numero complesso
     z = np.asarray([ np.complex(i[0],i[1]) for i in XY ])
@@ -107,9 +110,12 @@ def analytic_solution_circle(uinc,XY,wmin,wmax,radius,wavevector,alpha,x=None,op
     rw = radius*wavevector
     #
     for i in range(len(z)):
-        for j in range(len(Z)):            
-            a = np.power(1.j,Z[j])*scipy.special.jv(Z[j],rw)*np.exp(-1.j*Z[j]*alpha)
-            #a = fft.at[Z[j],"fft"]/NN
+        for j in range(len(Z)):  
+            if opts["FFT"] == True:
+                a = fft.at[Z[j],"fft"]/NN
+            else :
+                a = np.power(1.j,Z[j])*scipy.special.jv(Z[j],rw)*np.exp(-1.j*Z[j]*alpha)
+                
             b = scipy.special.hankel1(Z[j],r[i]*wavevector)
             c = scipy.special.hankel1(Z[j],rw)
             d = np.exp(1.j*Z[j]*theta[i])
